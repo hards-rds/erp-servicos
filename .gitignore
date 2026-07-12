@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+.next
+node_modules
+dist
+coverage
+tsconfig.tsbuildinfo
+*.pfx
+*.p12
+*.key
+*.pem
+backup*.sql
+backup*.dump
+.DS_Store

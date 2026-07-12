@@ -1,0 +1,18 @@
+{
+  "framework": "nextjs",
+  "regions": ["gru1"],
+  "functions": {
+    "src/app/api/fiscal/nfse/emitir/route.ts": {
+      "runtime": "nodejs22.x",
+      "maxDuration": 60
+    },
+    "src/app/api/billing/inter/charges/route.ts": {
+      "runtime": "nodejs22.x",
+      "maxDuration": 60
+    },
+    "src/app/api/users/route.ts": {
+      "runtime": "nodejs22.x",
+      "maxDuration": 30
+    }
+  }
+}
