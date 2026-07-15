@@ -10,10 +10,10 @@ export default function FluxoDeCaixaPage() {
         description="Visao por competencia, vencimento e caixa."
       />
       <section className="metrics">
-        <MetricCard label="Entradas previstas" value="R$ 128.450,00" />
-        <MetricCard label="Entradas recebidas" value="R$ 84.210,00" />
-        <MetricCard label="Saidas previstas" value="R$ 37.900,00" />
-        <MetricCard label="Saldo projetado" value="R$ 90.550,00" />
+        <MetricCard label="Entradas previstas" value="R$ 0,00" />
+        <MetricCard label="Entradas recebidas" value="R$ 0,00" />
+        <MetricCard label="Saidas previstas" value="R$ 0,00" />
+        <MetricCard label="Saldo projetado" value="R$ 0,00" />
       </section>
     </>
   );

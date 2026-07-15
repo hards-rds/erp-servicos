@@ -2,6 +2,7 @@
 .env.*
 !.env.example
 .supabase-db-password.local
+.master-password.local
 supabase/.temp
 .next
 node_modules

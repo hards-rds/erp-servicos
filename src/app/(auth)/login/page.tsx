@@ -1,7 +1,20 @@
 import { LockKeyhole } from "lucide-react";
 import Image from "next/image";
 
-export default function LoginPage() {
+const errorMessages: Record<string, string> = {
+  invalid: "E-mail ou senha inválidos.",
+  missing: "Informe e-mail e senha.",
+  config: "Autenticação indisponível no momento."
+};
+
+export default async function LoginPage({
+  searchParams
+}: {
+  searchParams?: Promise<{ error?: string }>;
+}) {
+  const params = await searchParams;
+  const error = params?.error ? errorMessages[params.error] : "";
+
   return (
     <main className="auth-shell">
       <section className="auth-brand" aria-label="Mundo Livre tecnologia">
@@ -22,6 +35,7 @@ export default function LoginPage() {
           <h1>Entrar</h1>
           <p>Acesse o painel da sua empresa com seguranca.</p>
         </div>
+        {error ? <div className="form-error" role="alert">{error}</div> : null}
         <form className="form-stack" action="/api/auth/login" method="post">
           <label>
             E-mail

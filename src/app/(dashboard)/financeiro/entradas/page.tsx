@@ -1,5 +1,4 @@
 import { PageHeader } from "@/components/layout/page-header";
-import { StatusBadge } from "@/components/ui/status-badge";
 
 export default function EntradasPage() {
   return (
@@ -26,12 +25,7 @@ export default function EntradasPage() {
             </thead>
             <tbody>
               <tr>
-                <td>Mensalidade contrato ML-042</td>
-                <td>Cliente Exemplo Ltda</td>
-                <td>2026-07</td>
-                <td>10/07/2026</td>
-                <td>R$ 3.500,00</td>
-                <td><StatusBadge tone="warning">aguardando pagamento</StatusBadge></td>
+                <td colSpan={6}>Nenhuma entrada financeira cadastrada.</td>
               </tr>
             </tbody>
           </table>

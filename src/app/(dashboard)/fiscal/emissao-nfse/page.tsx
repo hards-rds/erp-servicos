@@ -1,5 +1,4 @@
 import { PageHeader } from "@/components/layout/page-header";
-import { StatusBadge } from "@/components/ui/status-badge";
 
 export default function EmissaoNfsePage() {
   return (
@@ -24,11 +23,7 @@ export default function EmissaoNfsePage() {
             </thead>
             <tbody>
               <tr>
-                <td>Mensalidade ML-042</td>
-                <td>Cliente Exemplo Ltda</td>
-                <td>2026-07</td>
-                <td>R$ 3.500,00</td>
-                <td><StatusBadge tone="warning">validada</StatusBadge></td>
+                <td colSpan={5}>Nenhuma nota em fila de emissão.</td>
               </tr>
             </tbody>
           </table>

@@ -1,5 +1,4 @@
 import { PageHeader } from "@/components/layout/page-header";
-import { StatusBadge } from "@/components/ui/status-badge";
 
 export default function ContratosPage() {
   return (
@@ -25,11 +24,7 @@ export default function ContratosPage() {
             </thead>
             <tbody>
               <tr>
-                <td>Cliente Exemplo Ltda</td>
-                <td>Suporte mensal</td>
-                <td>R$ 3.500,00</td>
-                <td>Dia 10</td>
-                <td><StatusBadge tone="success">ativo</StatusBadge></td>
+                <td colSpan={5}>Nenhum contrato cadastrado.</td>
               </tr>
             </tbody>
           </table>

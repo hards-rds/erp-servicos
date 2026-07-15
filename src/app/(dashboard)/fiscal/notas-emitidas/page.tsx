@@ -1,5 +1,4 @@
 import { PageHeader } from "@/components/layout/page-header";
-import { StatusBadge } from "@/components/ui/status-badge";
 
 export default function NotasEmitidasPage() {
   return (
@@ -24,11 +23,7 @@ export default function NotasEmitidasPage() {
             </thead>
             <tbody>
               <tr>
-                <td>NFS-e 000001</td>
-                <td>Cliente Exemplo Ltda</td>
-                <td>2026-07</td>
-                <td>R$ 3.500,00</td>
-                <td><StatusBadge tone="success">autorizada</StatusBadge></td>
+                <td colSpan={5}>Nenhuma nota emitida.</td>
               </tr>
             </tbody>
           </table>

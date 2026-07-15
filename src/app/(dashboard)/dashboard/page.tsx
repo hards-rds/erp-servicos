@@ -1,6 +1,5 @@
 import { MetricCard } from "@/components/ui/metric-card";
 import { PageHeader } from "@/components/layout/page-header";
-import { StatusBadge } from "@/components/ui/status-badge";
 
 export default function DashboardPage() {
   return (
@@ -11,10 +10,10 @@ export default function DashboardPage() {
         description="Resumo financeiro, fiscal e de contratos recorrentes."
       />
       <section className="metrics">
-        <MetricCard label="Recebivel previsto" value="R$ 128.450,00" detail="competencia atual" />
-        <MetricCard label="Recebido" value="R$ 84.210,00" detail="65,6% realizado" />
-        <MetricCard label="Contratos ativos" value="42" detail="3 com reajuste pendente" />
-        <MetricCard label="Notas com pendencia" value="7" detail="validacao fiscal" />
+        <MetricCard label="Recebivel previsto" value="R$ 0,00" detail="sem lançamentos" />
+        <MetricCard label="Recebido" value="R$ 0,00" detail="0% realizado" />
+        <MetricCard label="Contratos ativos" value="0" detail="base limpa" />
+        <MetricCard label="Notas com pendencia" value="0" detail="fila vazia" />
       </section>
       <section className="table-panel">
         <h2>Fila de atencao</h2>
@@ -30,16 +29,7 @@ export default function DashboardPage() {
             </thead>
             <tbody>
               <tr>
-                <td>Financeiro</td>
-                <td>Entrada recorrente JUL/2026</td>
-                <td><StatusBadge tone="warning">aguardando pagamento</StatusBadge></td>
-                <td>Financeiro</td>
-              </tr>
-              <tr>
-                <td>Fiscal</td>
-                <td>NFS-e contrato ML-042</td>
-                <td><StatusBadge>validada</StatusBadge></td>
-                <td>Fiscal</td>
+                <td colSpan={4}>Nenhum item operacional cadastrado.</td>
               </tr>
             </tbody>
           </table>

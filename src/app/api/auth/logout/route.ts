@@ -1,23 +1,13 @@
-import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const form = await request.formData();
-  const email = String(form.get("email") || "").trim().toLowerCase();
-  const password = String(form.get("password") || "");
-
-  if (!email || !password) {
-    return NextResponse.redirect(new URL("/login?error=missing", request.url), { status: 303 });
-  }
-
-  const response = NextResponse.redirect(new URL("/dashboard", request.url), { status: 303 });
+  const response = NextResponse.redirect(new URL("/login", request.url), { status: 303 });
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-  if (!supabaseUrl || !publishableKey) {
-    return NextResponse.redirect(new URL("/login?error=config", request.url), { status: 303 });
-  }
+  if (!supabaseUrl || !publishableKey) return response;
 
   const supabase = createServerClient(supabaseUrl, publishableKey, {
     cookies: {
@@ -39,10 +29,6 @@ export async function POST(request: Request) {
     }
   });
 
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) {
-    return NextResponse.redirect(new URL("/login?error=invalid", request.url), { status: 303 });
-  }
-
+  await supabase.auth.signOut();
   return response;
 }

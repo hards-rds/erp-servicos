@@ -1,5 +1,4 @@
 import { PageHeader } from "@/components/layout/page-header";
-import { StatusBadge } from "@/components/ui/status-badge";
 
 export default function ConciliacaoPage() {
   return (
@@ -24,11 +23,7 @@ export default function ConciliacaoPage() {
             </thead>
             <tbody>
               <tr>
-                <td>12/07/2026</td>
-                <td>Banco Inter</td>
-                <td>Credito Pix</td>
-                <td>R$ 3.500,00</td>
-                <td><StatusBadge tone="warning">pendente</StatusBadge></td>
+                <td colSpan={5}>Nenhuma transação bancária importada.</td>
               </tr>
             </tbody>
           </table>

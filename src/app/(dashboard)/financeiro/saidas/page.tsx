@@ -1,5 +1,4 @@
 import { PageHeader } from "@/components/layout/page-header";
-import { StatusBadge } from "@/components/ui/status-badge";
 
 export default function SaidasPage() {
   return (
@@ -25,11 +24,7 @@ export default function SaidasPage() {
             </thead>
             <tbody>
               <tr>
-                <td>Fornecedor Exemplo</td>
-                <td>Infraestrutura</td>
-                <td>15/07/2026</td>
-                <td>R$ 850,00</td>
-                <td><StatusBadge>previsto</StatusBadge></td>
+                <td colSpan={5}>Nenhuma saída cadastrada.</td>
               </tr>
             </tbody>
           </table>

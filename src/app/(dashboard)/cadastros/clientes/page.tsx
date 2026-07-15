@@ -1,5 +1,4 @@
 import { PageHeader } from "@/components/layout/page-header";
-import { StatusBadge } from "@/components/ui/status-badge";
 
 export default function ClientesPage() {
   return (
@@ -25,10 +24,7 @@ export default function ClientesPage() {
               </thead>
               <tbody>
                 <tr>
-                  <td>Cliente Exemplo Ltda</td>
-                  <td>12.345.678/0001-90</td>
-                  <td>fiscal@cliente.com</td>
-                  <td><StatusBadge tone="success">ativo</StatusBadge></td>
+                  <td colSpan={4}>Nenhum cliente cadastrado.</td>
                 </tr>
               </tbody>
             </table>

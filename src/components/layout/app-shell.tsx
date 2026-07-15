@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
   Banknote,
   Building2,
@@ -54,14 +55,24 @@ const nav = [
   }
 ];
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export async function AppShell({ children }: { children: React.ReactNode }) {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  const { data: profile } = user
+    ? await supabase.from("profiles").select("name,email,role,company_id").eq("id", user.id).maybeSingle()
+    : { data: null };
+  const displayEmail = profile?.email || user?.email || "Usuário";
+  const displayRole = profile?.role === "master" ? "master" : profile?.role || "sem perfil";
+
   return (
     <div className="app-shell">
       <aside className="sidebar" aria-label="Modulos">
         <div className="sidebar-header">
           <div>
             <strong>ERP Servicos</strong>
-            <div className="muted">Empresa ativa</div>
+            <div className="muted">Mundo Livre tecnologia</div>
           </div>
           <button className="icon-button" type="button" title="Recolher modulos" aria-label="Recolher modulos">
             <ChevronLeft />
@@ -89,10 +100,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="muted">Ambiente seguro para financeiro, fiscal e cobrancas</div>
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <span className="badge">admin@empresa.com</span>
-            <button className="icon-button" type="button" title="Sair" aria-label="Sair">
-              <LogOut />
-            </button>
+            <span className="badge">{displayEmail} · {displayRole}</span>
+            <form action="/api/auth/logout" method="post">
+              <button className="icon-button" type="submit" title="Sair" aria-label="Sair">
+                <LogOut />
+              </button>
+            </form>
           </div>
         </header>
         <section className="content">{children}</section>

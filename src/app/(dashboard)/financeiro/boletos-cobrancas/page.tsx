@@ -1,5 +1,4 @@
 import { PageHeader } from "@/components/layout/page-header";
-import { StatusBadge } from "@/components/ui/status-badge";
 
 export default function BoletosCobrancasPage() {
   return (
@@ -23,10 +22,7 @@ export default function BoletosCobrancasPage() {
             </thead>
             <tbody>
               <tr>
-                <td>Mensalidade ML-042</td>
-                <td>sandbox-pendente</td>
-                <td>10/07/2026</td>
-                <td><StatusBadge>rascunho</StatusBadge></td>
+                <td colSpan={4}>Nenhuma cobrança cadastrada.</td>
               </tr>
             </tbody>
           </table>

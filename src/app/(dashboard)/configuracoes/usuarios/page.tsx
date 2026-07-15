@@ -24,8 +24,8 @@ export default function UsuariosPage() {
             </thead>
             <tbody>
               <tr>
-                <td>Administrador</td>
-                <td>admin@empresa.com</td>
+                <td>Lucas Rocha</td>
+                <td>lucas@mundolivre.com.br</td>
                 <td>master</td>
                 <td><StatusBadge tone="success">ativo</StatusBadge></td>
               </tr>
