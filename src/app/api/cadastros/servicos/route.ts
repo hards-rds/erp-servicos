@@ -11,6 +11,10 @@ function parseMoney(value: string) {
   return Number.isFinite(amount) ? amount : null;
 }
 
+function getCompetence(value: string) {
+  return (value || new Date().toISOString().slice(0, 10)).slice(0, 7);
+}
+
 function collectSegmentDetails(formData: FormData, segment: string) {
   if (segment === "otica") {
     return {
@@ -48,6 +52,63 @@ function collectSegmentDetails(formData: FormData, segment: string) {
   }
 
   return { segment };
+}
+
+async function syncReceivableFromService(input: {
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>;
+  companyId: string;
+  serviceId: string;
+  profileId: string;
+  payload: {
+    client_id: string;
+    service_description: string;
+    amount: number;
+    service_date: string;
+    due_date: string | null;
+    status: string;
+    notes: string | null;
+  };
+}) {
+  const idempotencyKey = `service-record:${input.serviceId}`;
+
+  if (input.payload.status !== "faturado") {
+    await input.supabase
+      .from("financial_entries")
+      .update({
+        status: "cancelado",
+        cancel_reason: "Servico deixou de estar faturado.",
+        updated_by: input.profileId,
+        updated_at: new Date().toISOString()
+      })
+      .eq("company_id", input.companyId)
+      .eq("idempotency_key", idempotencyKey);
+    return;
+  }
+
+  const dueDate = input.payload.due_date || input.payload.service_date;
+  await input.supabase.from("financial_entries").upsert(
+    {
+      company_id: input.companyId,
+      client_id: input.payload.client_id,
+      type: "avulsa",
+      description: input.payload.service_description,
+      competence: getCompetence(input.payload.service_date),
+      issued_at: input.payload.service_date,
+      due_date: dueDate,
+      gross_amount: input.payload.amount,
+      discounts: 0,
+      interest: 0,
+      penalty: 0,
+      net_amount: input.payload.amount,
+      status: "aguardando_pagamento",
+      idempotency_key: idempotencyKey,
+      notes: input.payload.notes,
+      created_by: input.profileId,
+      updated_by: input.profileId,
+      updated_at: new Date().toISOString()
+    },
+    { onConflict: "company_id,idempotency_key" }
+  );
 }
 
 export async function POST(request: NextRequest) {
@@ -108,14 +169,34 @@ export async function POST(request: NextRequest) {
       .eq("id", serviceId)
       .eq("company_id", profile.company_id);
 
+    if (!error) {
+      await syncReceivableFromService({
+        supabase,
+        companyId: profile.company_id,
+        serviceId,
+        profileId: profile.id,
+        payload
+      });
+    }
+
     return NextResponse.redirect(new URL(`/cadastros/servicos?status=${error ? "update_error" : "updated"}`, request.url), 303);
   }
 
-  const { error } = await supabase.from("service_records").insert({
+  const { data: createdService, error } = await supabase.from("service_records").insert({
     ...payload,
     company_id: profile.company_id,
     created_by: profile.id
-  });
+  }).select("id").single();
+
+  if (!error && createdService?.id) {
+    await syncReceivableFromService({
+      supabase,
+      companyId: profile.company_id,
+      serviceId: createdService.id,
+      profileId: profile.id,
+      payload
+    });
+  }
 
   return NextResponse.redirect(new URL(`/cadastros/servicos?status=${error ? "error" : "created"}`, request.url), 303);
 }
