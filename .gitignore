@@ -16,4 +16,6 @@ tsconfig.tsbuildinfo
 backup*.sql
 backup*.dump
 .DS_Store
+.swp
+*.swp
 .vercel
