@@ -36,12 +36,19 @@ export async function GET(request: NextRequest) {
   }
 
   const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${document}`, {
-    next: { revalidate: 60 * 60 * 24 * 7 }
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "erp-servicos/1.0"
+    }
   });
 
   if (!response.ok) {
     return NextResponse.json(
-      { error: "Nao foi possivel consultar esse CNPJ agora. Voce ainda pode preencher manualmente." },
+      {
+        error: "Nao foi possivel consultar esse CNPJ agora. Voce ainda pode preencher manualmente.",
+        providerStatus: response.status
+      },
       { status: 502 }
     );
   }
