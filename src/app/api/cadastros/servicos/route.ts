@@ -71,8 +71,10 @@ export async function POST(request: NextRequest) {
   }
 
   const formData = await request.formData();
+  const action = readString(formData, "action") || "create";
   const company = Array.isArray(profile.companies) ? profile.companies[0] : profile.companies;
   const segment = company?.service_segment || "tecnologia";
+  const serviceId = readString(formData, "serviceId");
   const clientId = readString(formData, "clientId");
   const serviceDescription = readString(formData, "serviceDescription");
   const amount = parseMoney(readString(formData, "amount"));
@@ -81,8 +83,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.redirect(new URL("/cadastros/servicos?status=invalid", request.url), 303);
   }
 
-  const { error } = await supabase.from("service_records").insert({
-    company_id: profile.company_id,
+  const payload = {
     client_id: clientId,
     service_description: serviceDescription,
     service_type: readString(formData, "serviceType") || "avulso",
@@ -92,8 +93,28 @@ export async function POST(request: NextRequest) {
     status: readString(formData, "status") || "rascunho",
     fiscal_service_data: collectSegmentDetails(formData, segment),
     notes: readString(formData, "notes") || null,
-    created_by: profile.id,
-    updated_by: profile.id
+    updated_by: profile.id,
+    updated_at: new Date().toISOString()
+  };
+
+  if (action === "update") {
+    if (!serviceId) {
+      return NextResponse.redirect(new URL("/cadastros/servicos?status=invalid", request.url), 303);
+    }
+
+    const { error } = await supabase
+      .from("service_records")
+      .update(payload)
+      .eq("id", serviceId)
+      .eq("company_id", profile.company_id);
+
+    return NextResponse.redirect(new URL(`/cadastros/servicos?status=${error ? "update_error" : "updated"}`, request.url), 303);
+  }
+
+  const { error } = await supabase.from("service_records").insert({
+    ...payload,
+    company_id: profile.company_id,
+    created_by: profile.id
   });
 
   return NextResponse.redirect(new URL(`/cadastros/servicos?status=${error ? "error" : "created"}`, request.url), 303);
