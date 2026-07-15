@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
 import { onlyDigits } from "@/lib/validations/br-documents";
 
 const segments = new Set(["tecnologia", "otica", "generico"]);
@@ -41,7 +41,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.redirect(new URL("/configuracoes/gerais?status=invalid", request.url), 303);
   }
 
-  const { error } = await supabase
+  const service = createServiceClient();
+  const { error } = await service
     .from("companies")
     .update({
       name,
