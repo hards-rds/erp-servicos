@@ -6,6 +6,10 @@ function readString(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
 }
 
+function redirectWith(request: NextRequest, status: string) {
+  return NextResponse.redirect(new URL(`/cadastros/clientes?status=${status}`, request.url), 303);
+}
+
 export async function POST(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -23,15 +27,31 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   if (!profile?.company_id) {
-    return NextResponse.redirect(new URL("/cadastros/clientes?status=profile_error", request.url), 303);
+    return redirectWith(request, "profile_error");
   }
 
   const formData = await request.formData();
+  const action = readString(formData, "action") || "create";
+  const clientId = readString(formData, "clientId");
+
+  if (action === "delete") {
+    if (!clientId) return redirectWith(request, "invalid_delete");
+
+    const { error } = await supabase
+      .from("clients")
+      .delete()
+      .eq("id", clientId)
+      .eq("company_id", profile.company_id);
+
+    if (error?.code === "23503") return redirectWith(request, "delete_linked");
+    return redirectWith(request, error ? "delete_error" : "deleted");
+  }
+
   const document = onlyDigits(readString(formData, "document"));
   const legalName = readString(formData, "legalName");
 
   if (!legalName || !isValidCpfOrCnpj(document)) {
-    return NextResponse.redirect(new URL("/cadastros/clientes?status=invalid", request.url), 303);
+    return redirectWith(request, "invalid");
   }
 
   const address = {
@@ -44,8 +64,7 @@ export async function POST(request: NextRequest) {
     zipCode: onlyDigits(readString(formData, "zipCode"))
   };
 
-  const { error } = await supabase.from("clients").insert({
-    company_id: profile.company_id,
+  const payload = {
     legal_name: legalName,
     trade_name: readString(formData, "tradeName") || null,
     document,
@@ -56,11 +75,33 @@ export async function POST(request: NextRequest) {
     phone: readString(formData, "phone") || null,
     address,
     internal_notes: readString(formData, "internalNotes") || null,
-    status: "ativo",
-    created_by: profile.id,
     updated_by: profile.id
+  };
+
+  if (action === "update") {
+    if (!clientId) return redirectWith(request, "invalid");
+
+    const { error } = await supabase
+      .from("clients")
+      .update({
+        ...payload,
+        status: readString(formData, "status") || "ativo",
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", clientId)
+      .eq("company_id", profile.company_id);
+
+    const nextStatus = error?.code === "23505" ? "duplicate" : error ? "update_error" : "updated";
+    return redirectWith(request, nextStatus);
+  }
+
+  const { error } = await supabase.from("clients").insert({
+    ...payload,
+    company_id: profile.company_id,
+    status: "ativo",
+    created_by: profile.id
   });
 
   const nextStatus = error?.code === "23505" ? "duplicate" : error ? "error" : "created";
-  return NextResponse.redirect(new URL(`/cadastros/clientes?status=${nextStatus}`, request.url), 303);
+  return redirectWith(request, nextStatus);
 }

@@ -25,23 +25,54 @@ type LookupResponse = {
   error?: string;
 };
 
-export function ClientForm() {
-  const [document, setDocument] = useState("");
+type ClientFormValues = {
+  id?: string;
+  document?: string;
+  legalName?: string;
+  tradeName?: string;
+  phone?: string;
+  fiscalEmail?: string;
+  financialEmail?: string;
+  municipalRegistration?: string;
+  stateRegistration?: string;
+  internalNotes?: string;
+  address?: {
+    street?: string;
+    number?: string;
+    complement?: string;
+    district?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
+  };
+};
+
+type ClientFormProps = {
+  action?: "create" | "update";
+  initialValues?: ClientFormValues;
+  submitLabel?: string;
+};
+
+export function ClientForm({ action = "create", initialValues, submitLabel }: ClientFormProps) {
+  const [document, setDocument] = useState(initialValues?.document || "");
   const [lookupState, setLookupState] = useState<LookupState>("idle");
   const [lookupMessage, setLookupMessage] = useState("");
   const [fields, setFields] = useState({
-    legalName: "",
-    tradeName: "",
-    phone: "",
-    fiscalEmail: "",
-    financialEmail: "",
-    street: "",
-    number: "",
-    complement: "",
-    district: "",
-    city: "",
-    state: "",
-    zipCode: ""
+    legalName: initialValues?.legalName || "",
+    tradeName: initialValues?.tradeName || "",
+    phone: initialValues?.phone || "",
+    fiscalEmail: initialValues?.fiscalEmail || "",
+    financialEmail: initialValues?.financialEmail || "",
+    municipalRegistration: initialValues?.municipalRegistration || "",
+    stateRegistration: initialValues?.stateRegistration || "",
+    internalNotes: initialValues?.internalNotes || "",
+    street: initialValues?.address?.street || "",
+    number: initialValues?.address?.number || "",
+    complement: initialValues?.address?.complement || "",
+    district: initialValues?.address?.district || "",
+    city: initialValues?.address?.city || "",
+    state: initialValues?.address?.state || "",
+    zipCode: initialValues?.address?.zipCode || ""
   });
 
   async function lookupDocument() {
@@ -78,6 +109,8 @@ export function ClientForm() {
 
   return (
     <form className="form-stack" action="/api/cadastros/clientes" method="post">
+      <input type="hidden" name="action" value={action} />
+      {initialValues?.id ? <input type="hidden" name="clientId" value={initialValues.id} /> : null}
       <label>
         CPF/CNPJ
         <div className="inline-control">
@@ -156,11 +189,21 @@ export function ClientForm() {
       <div className="form-grid">
         <label>
           Inscricao municipal
-          <input name="municipalRegistration" placeholder="Inscricao municipal" />
+          <input
+            name="municipalRegistration"
+            value={fields.municipalRegistration}
+            onChange={(event) => setFields({ ...fields, municipalRegistration: event.target.value })}
+            placeholder="Inscricao municipal"
+          />
         </label>
         <label>
           Inscricao estadual
-          <input name="stateRegistration" placeholder="Inscricao estadual" />
+          <input
+            name="stateRegistration"
+            value={fields.stateRegistration}
+            onChange={(event) => setFields({ ...fields, stateRegistration: event.target.value })}
+            placeholder="Inscricao estadual"
+          />
         </label>
       </div>
       <div className="form-grid">
@@ -235,9 +278,14 @@ export function ClientForm() {
       </div>
       <label>
         Observacoes
-        <textarea name="internalNotes" placeholder="Observacoes internas" />
+        <textarea
+          name="internalNotes"
+          value={fields.internalNotes}
+          onChange={(event) => setFields({ ...fields, internalNotes: event.target.value })}
+          placeholder="Observacoes internas"
+        />
       </label>
-      <button className="primary-button" type="submit">Criar cliente</button>
+      <button className="primary-button" type="submit">{submitLabel || (action === "update" ? "Salvar alteracoes" : "Criar cliente")}</button>
     </form>
   );
 }
