@@ -4,6 +4,7 @@ import {
   Banknote,
   Building2,
   ChevronLeft,
+  ClipboardList,
   FileText,
   LayoutDashboard,
   LogOut,
@@ -22,6 +23,7 @@ const nav = [
     title: "Cadastros",
     items: [
       { href: "/cadastros/clientes", label: "Clientes", icon: Building2 },
+      { href: "/cadastros/servicos", label: "Servicos", icon: ClipboardList },
       { href: "/cadastros/contratos", label: "Contratos", icon: FileText }
     ]
   },

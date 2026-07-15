@@ -151,6 +151,13 @@ textarea {
   font-weight: 700;
 }
 
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+}
+
 .ghost-button {
   background: #101115;
   border-color: var(--line);
@@ -167,6 +174,11 @@ textarea {
 .icon-button svg {
   width: 18px;
   height: 18px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .app-shell {
@@ -343,10 +355,23 @@ th {
   gap: 16px;
 }
 
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.inline-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px;
+  gap: 8px;
+}
+
 @media (max-width: 980px) {
   .auth-shell,
   .app-shell,
-  .two-columns {
+  .two-columns,
+  .form-grid {
     grid-template-columns: 1fr;
   }
 

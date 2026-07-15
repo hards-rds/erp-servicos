@@ -1,4 +1,4 @@
-const onlyDigits = (value: string) => value.replace(/\D/g, "");
+export const onlyDigits = (value: string) => value.replace(/\D/g, "");
 
 function allDigitsEqual(value: string): boolean {
   return /^(\d)\1+$/.test(value);
