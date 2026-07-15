@@ -3,6 +3,12 @@ import { createServerClient } from "@supabase/ssr";
 
 export const runtime = "nodejs";
 
+type CookieToSet = {
+  name: string;
+  value: string;
+  options?: Parameters<NextResponse["cookies"]["set"]>[2];
+};
+
 export async function POST(request: Request) {
   const form = await request.formData();
   const email = String(form.get("email") || "").trim().toLowerCase();
@@ -31,7 +37,7 @@ export async function POST(request: Request) {
           })
           .filter((cookie) => cookie.name) ?? [];
       },
-      setAll(cookiesToSet) {
+      setAll(cookiesToSet: CookieToSet[]) {
         cookiesToSet.forEach(({ name, value, options }) => {
           response.cookies.set(name, value, options);
         });
