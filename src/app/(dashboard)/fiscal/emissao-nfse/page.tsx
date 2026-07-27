@@ -11,6 +11,19 @@ type NfseRow = {
   financial_entries: { description: string } | { description: string }[] | null;
 };
 
+type EmissaoNfsePageProps = {
+  searchParams?: Promise<{ status?: string; message?: string }>;
+};
+
+const statusMessages: Record<string, { kind: "success" | "error"; text: string }> = {
+  processed: { kind: "success", text: "NFS-e processada pela inteligencia fiscal." },
+  rejected: { kind: "error", text: "NFS-e rejeitada na validacao fiscal. Veja o status da fila." },
+  invalid: { kind: "error", text: "Documento fiscal invalido." },
+  not_found: { kind: "error", text: "Documento fiscal nao encontrado." },
+  profile_error: { kind: "error", text: "Seu usuario ainda nao esta vinculado a uma empresa." },
+  error: { kind: "error", text: "Nao foi possivel processar a NFS-e agora." }
+};
+
 function formatMoney(value: number | string) {
   return Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -31,7 +44,8 @@ function getTone(status: string) {
   return "neutral" as const;
 }
 
-export default async function EmissaoNfsePage() {
+export default async function EmissaoNfsePage({ searchParams }: EmissaoNfsePageProps) {
+  const params = await searchParams;
   const supabase = await createServerSupabaseClient();
   const { data: documents } = await supabase
     .from("nfse_documents")
@@ -39,6 +53,7 @@ export default async function EmissaoNfsePage() {
     .order("created_at", { ascending: false })
     .limit(100);
   const allDocuments = (documents || []) as NfseRow[];
+  const message = params?.status ? statusMessages[params.status] : null;
 
   return (
     <>
@@ -47,6 +62,11 @@ export default async function EmissaoNfsePage() {
         title="Emissao de NFS-e"
         description="Fila de validacao e emissao fiscal; producao exige confirmacao explicita."
       />
+      {message ? (
+        <div className={message.kind === "success" ? "form-success" : "form-error"}>
+          {params?.message || message.text}
+        </div>
+      ) : null}
       <section className="table-panel">
         <h2>Fila fiscal</h2>
         <div className="table-wrap">
@@ -58,6 +78,7 @@ export default async function EmissaoNfsePage() {
                 <th>Competencia</th>
                 <th>Valor</th>
                 <th>Status fiscal</th>
+                <th>Acoes</th>
               </tr>
             </thead>
             <tbody>
@@ -69,11 +90,17 @@ export default async function EmissaoNfsePage() {
                     <td>{document.competence}</td>
                     <td>{formatMoney(document.service_amount)}</td>
                     <td><StatusBadge tone={getTone(document.status)}>{document.status}</StatusBadge></td>
+                    <td>
+                      <form action="/api/fiscal/nfse/emitir" method="post">
+                        <input type="hidden" name="nfseDocumentId" value={document.id} />
+                        <button className="ghost-button compact-button" type="submit">Processar</button>
+                      </form>
+                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5}>Nenhuma nota em fila de emissão.</td>
+                  <td colSpan={6}>Nenhuma nota em fila de emissão.</td>
                 </tr>
               )}
             </tbody>

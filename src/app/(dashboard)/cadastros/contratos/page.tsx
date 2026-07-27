@@ -184,6 +184,52 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
                 <span>Gerar boleto/cobranca Banco Inter automaticamente</span>
               </label>
             </fieldset>
+            <fieldset className="checkbox-panel">
+              <legend>Dados fiscais para NFS-e Nacional</legend>
+              <div className="form-grid">
+                <label>
+                  Ambiente NFS-e
+                  <select name="nfseEnvironment" defaultValue="homologation">
+                    <option value="homologation">Homologacao</option>
+                    <option value="production">Producao</option>
+                  </select>
+                </label>
+                <label>
+                  Serie DPS
+                  <input name="series" defaultValue="1" />
+                </label>
+              </div>
+              <div className="form-grid">
+                <label>
+                  Codigo IBGE municipio
+                  <input name="cityCode" placeholder="Ex.: 3106200" />
+                </label>
+                <label>
+                  Inscricao municipal emitente
+                  <input name="municipalRegistration" placeholder="Inscricao municipal" />
+                </label>
+              </div>
+              <div className="form-grid">
+                <label>
+                  Codigo nacional do servico
+                  <input name="serviceCode" placeholder="Ex.: 010701" />
+                </label>
+                <label>
+                  Codigo municipal do servico
+                  <input name="municipalServiceCode" placeholder="Ex.: 001" />
+                </label>
+              </div>
+              <div className="form-grid">
+                <label className="checkbox-row">
+                  <input type="checkbox" name="simpleNational" />
+                  <span>Emitente optante pelo Simples Nacional</span>
+                </label>
+                <label className="checkbox-row">
+                  <input type="checkbox" name="retainIss" />
+                  <span>Reter ISSQN</span>
+                </label>
+              </div>
+            </fieldset>
             <label>
               Observacoes
               <textarea name="notes" placeholder="Regras comerciais, escopo e observacoes internas" />

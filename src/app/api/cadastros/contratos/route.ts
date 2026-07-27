@@ -16,6 +16,21 @@ function redirectWith(request: NextRequest, status: string) {
   return NextResponse.redirect(new URL(`/cadastros/contratos?status=${status}`, request.url), 303);
 }
 
+function collectFiscalServiceData(formData: FormData) {
+  return {
+    provider: "nfse_nacional",
+    environment: readString(formData, "nfseEnvironment") || "homologation",
+    cityCode: readString(formData, "cityCode"),
+    serviceCode: readString(formData, "serviceCode"),
+    municipalServiceCode: readString(formData, "municipalServiceCode"),
+    municipalRegistration: readString(formData, "municipalRegistration"),
+    series: readString(formData, "series") || "1",
+    layoutVersion: readString(formData, "layoutVersion") || "1.01",
+    retainIss: formData.get("retainIss") === "on",
+    simpleNational: formData.get("simpleNational") === "on"
+  };
+}
+
 async function generateContractFlow(input: {
   supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>;
   companyId: string;
@@ -51,7 +66,7 @@ async function generateContractFlow(input: {
         net_amount: input.amount,
         status: input.autoGenerateCharge ? "aguardando_pagamento" : "previsto",
         idempotency_key: entryKey,
-        notes: "Gerado automaticamente a partir de contrato recorrente.",
+      notes: "Gerado automaticamente a partir de contrato recorrente.",
         created_by: input.profileId,
         updated_by: input.profileId,
         updated_at: new Date().toISOString()
@@ -138,6 +153,7 @@ export async function POST(request: NextRequest) {
   const dueDay = Number(readString(formData, "dueDay"));
   const autoIssueNfse = formData.get("autoIssueNfse") === "on";
   const autoGenerateCharge = formData.get("autoGenerateCharge") === "on";
+  const fiscalServiceData = collectFiscalServiceData(formData);
 
   if (action === "generate") {
     if (!contractId) return redirectWith(request, "invalid");
@@ -184,6 +200,7 @@ export async function POST(request: NextRequest) {
       status: readString(formData, "status") || "ativo",
       auto_issue_nfse: autoIssueNfse,
       auto_generate_charge: autoGenerateCharge,
+      fiscal_service_data: fiscalServiceData,
       notes: readString(formData, "notes") || null,
       created_by: profile.id,
       updated_by: profile.id
