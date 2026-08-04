@@ -374,6 +374,28 @@ th {
   gap: 12px;
 }
 
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0 18px;
+}
+
+.summary-grid div {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #0b0c0f;
+  padding: 12px;
+}
+
+.summary-grid span {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
 .inline-control {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 40px;
@@ -471,6 +493,7 @@ th {
   .app-shell,
   .two-columns,
   .form-grid,
+  .summary-grid,
   .settings-row {
     grid-template-columns: 1fr;
   }
