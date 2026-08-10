@@ -1,6 +1,6 @@
-import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { parsePfx, PfxValidationError } from "@/lib/certificates/pfx";
+import { encryptCertificateSecret } from "@/lib/certificates/secrets";
 import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -9,20 +9,6 @@ const maxCertificateBytes = 2 * 1024 * 1024;
 
 function redirectWith(request: NextRequest, status: string) {
   return NextResponse.redirect(new URL(`/configuracoes/certificado-digital?status=${status}`, request.url), 303);
-}
-
-function encryptionKey() {
-  const secret = process.env.CERTIFICATE_ENCRYPTION_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!secret) throw new Error("Chave de criptografia do certificado nao configurada.");
-  return crypto.createHash("sha256").update(secret).digest();
-}
-
-function encryptSecret(value: string) {
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv("aes-256-gcm", encryptionKey(), iv);
-  const ciphertext = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return `v1:${iv.toString("base64")}:${tag.toString("base64")}:${ciphertext.toString("base64")}`;
 }
 
 async function getMasterActor() {
@@ -96,8 +82,8 @@ export async function POST(request: NextRequest) {
     const { error } = await service.from("digital_certificates").insert({
       company_id: actor.company_id,
       label: parsed.label,
-      encrypted_pfx: encryptSecret(pfxBase64),
-      encrypted_password: encryptSecret(password),
+      encrypted_pfx: encryptCertificateSecret(pfxBase64),
+      encrypted_password: encryptCertificateSecret(password),
       valid_until: parsed.validUntil,
       active: true
     });

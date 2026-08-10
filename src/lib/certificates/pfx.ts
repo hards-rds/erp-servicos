@@ -5,6 +5,11 @@ export type ParsedPfx = {
   validUntil: string;
 };
 
+export type PfxSigningMaterials = ParsedPfx & {
+  certificatePem: string;
+  privateKeyPem: string;
+};
+
 export class PfxValidationError extends Error {
   readonly code: "invalid_password" | "invalid_certificate";
 
@@ -28,7 +33,7 @@ function isPasswordError(error: unknown) {
   );
 }
 
-export function parsePfx(buffer: Buffer, password: string): ParsedPfx {
+export function extractPfxSigningMaterials(buffer: Buffer, password: string): PfxSigningMaterials {
   try {
     const der = forge.util.createBuffer(buffer.toString("binary"));
     const asn1 = forge.asn1.fromDer(der);
@@ -55,9 +60,13 @@ export function parsePfx(buffer: Buffer, password: string): ParsedPfx {
         return bag.cert && !constraints?.cA;
       }) ?? certificates[0];
     const certificate = certificateBag.cert;
+    const privateKey = keys[0]?.key;
 
-    if (!certificate) {
-      throw new PfxValidationError("invalid_certificate", "Certificado X.509 nao encontrado no arquivo.");
+    if (!certificate || !privateKey) {
+      throw new PfxValidationError(
+        "invalid_certificate",
+        "Certificado X.509 ou chave privada nao encontrados no arquivo."
+      );
     }
 
     const validUntil = certificate.validity.notAfter;
@@ -69,7 +78,9 @@ export function parsePfx(buffer: Buffer, password: string): ParsedPfx {
 
     return {
       label: typeof commonName === "string" && commonName.trim() ? commonName.trim() : "Certificado A1",
-      validUntil: validUntil.toISOString().slice(0, 10)
+      validUntil: validUntil.toISOString().slice(0, 10),
+      certificatePem: forge.pki.certificateToPem(certificate),
+      privateKeyPem: forge.pki.privateKeyToPem(privateKey)
     };
   } catch (error) {
     if (error instanceof PfxValidationError) throw error;
@@ -78,4 +89,9 @@ export function parsePfx(buffer: Buffer, password: string): ParsedPfx {
     }
     throw new PfxValidationError("invalid_certificate", "O arquivo nao e um certificado PFX/P12 valido.");
   }
+}
+
+export function parsePfx(buffer: Buffer, password: string): ParsedPfx {
+  const { label, validUntil } = extractPfxSigningMaterials(buffer, password);
+  return { label, validUntil };
 }

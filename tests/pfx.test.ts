@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import forge from "node-forge";
-import { parsePfx, PfxValidationError } from "../src/lib/certificates/pfx.ts";
+import { DOMParser } from "@xmldom/xmldom";
+import { SignedXml } from "xml-crypto";
+import { extractPfxSigningMaterials, parsePfx, PfxValidationError } from "../src/lib/certificates/pfx.ts";
+import {
+  decryptCertificateSecret,
+  encryptCertificateSecret
+} from "../src/lib/certificates/secrets.ts";
+import { decodeNfseXml, encodeDpsXml, signDpsXml } from "../src/lib/integrations/nfse-transport.ts";
 
 function createTestPfx(password: string) {
   const keys = forge.pki.rsa.generateKeyPair(1024);
@@ -39,4 +46,45 @@ test("distingue senha incorreta de certificado invalido", () => {
     () => parsePfx(Buffer.from("nao-e-pfx"), "senha-correta"),
     (error) => error instanceof PfxValidationError && error.code === "invalid_certificate"
   );
+});
+
+test("protege e recupera o certificado com a chave do servidor", () => {
+  const previousKey = process.env.CERTIFICATE_ENCRYPTION_KEY;
+  process.env.CERTIFICATE_ENCRYPTION_KEY = "chave-de-teste-do-certificado";
+
+  try {
+    const encrypted = encryptCertificateSecret("conteudo-sensivel");
+    assert.notEqual(encrypted, "conteudo-sensivel");
+    assert.equal(decryptCertificateSecret(encrypted), "conteudo-sensivel");
+
+    process.env.CERTIFICATE_ENCRYPTION_KEY = "outra-chave";
+    assert.throws(() => decryptCertificateSecret(encrypted), /CERTIFICATE_ENCRYPTION_KEY/);
+  } finally {
+    if (previousKey === undefined) delete process.env.CERTIFICATE_ENCRYPTION_KEY;
+    else process.env.CERTIFICATE_ENCRYPTION_KEY = previousKey;
+  }
+});
+
+test("assina a DPS com RSA-SHA256 e compacta em GZip Base64", () => {
+  const password = "senha-teste";
+  const pfx = createTestPfx(password);
+  const materials = extractPfxSigningMaterials(pfx, password);
+  const xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><DPS xmlns=\"http://www.sped.fazenda.gov.br/nfse\" versao=\"1.01\"><infDPS Id=\"DPS123\" versao=\"1.01\"><tpAmb>2</tpAmb></infDPS></DPS>";
+  const signedXml = signDpsXml(xml, {
+    pfx,
+    password,
+    certificatePem: materials.certificatePem,
+    privateKeyPem: materials.privateKeyPem
+  });
+
+  assert.match(signedXml, /rsa-sha256/);
+  assert.match(signedXml, /<X509Certificate>/);
+  assert.equal(decodeNfseXml(encodeDpsXml(signedXml)), signedXml);
+
+  const verifier = new SignedXml({ publicCert: materials.certificatePem });
+  const document = new DOMParser().parseFromString(signedXml);
+  const signature = verifier.findSignatures(document)[0];
+  assert.ok(signature);
+  verifier.loadSignature(signature);
+  assert.equal(verifier.checkSignature(signedXml), true);
 });

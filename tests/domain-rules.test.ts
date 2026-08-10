@@ -5,7 +5,7 @@ import { dueDateForCompetence } from "../src/lib/dates/competence.ts";
 import { generateRecurringEntry } from "../src/domains/contracts/recurrence.ts";
 import { summarizeCashflow, assertPayableCanBeMarkedPaid } from "../src/domains/finance/cashflow.ts";
 import { nfseIdempotencyKey, validateNfseDraft } from "../src/domains/fiscal/nfse.ts";
-import { buildDpsXml, mergeNfseFiscalData } from "../src/lib/integrations/nfse-national.ts";
+import { buildDpsXml, interpretNfseResponse, mergeNfseFiscalData } from "../src/lib/integrations/nfse-national.ts";
 import { interChargeIdempotencyKey, validateChargeDraft } from "../src/domains/billing/inter.ts";
 import { assertCannotChangeOwnElevation, can } from "../src/domains/users/permissions.ts";
 import { serviceDeletionBlock } from "../src/domains/services/deletion.ts";
@@ -100,6 +100,18 @@ test("reprocessa NFS-e com os dados fiscais corrigidos no contrato", () => {
   });
 
   assert.match(dps.xml, /<CPF>52998224725<\/CPF>/);
+  assert.match(dps.xml, /<infDPS Id="[^"]+" versao="1.01">/);
+});
+
+test("preserva a rejeicao detalhada devolvida pela SEFIN", () => {
+  const result = interpretNfseResponse({
+    idDPS: "DPS123",
+    erros: [{ Codigo: "E1200", Descricao: "Certificado de transmissao invalido" }]
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, "rejeitada");
+  assert.equal(result.message, "E1200 - Certificado de transmissao invalido");
 });
 
 test("valida cobranca Inter e idempotencia", () => {

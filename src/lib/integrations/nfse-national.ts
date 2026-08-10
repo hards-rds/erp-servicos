@@ -122,7 +122,9 @@ export function validateNfseEnvironment(environment: string, endpoint: string) {
 
   let hostname = "";
   try {
-    hostname = new URL(endpoint).hostname.toLowerCase();
+    const target = new URL(endpoint);
+    if (target.protocol !== "https:") return "Endpoint da NFS-e Nacional deve usar HTTPS.";
+    hostname = target.hostname.toLowerCase();
   } catch {
     return "Endpoint da NFS-e Nacional invalido.";
   }
@@ -170,7 +172,7 @@ export function buildDpsXml(input: NfseNationalInput) {
     environment,
     xml: `<?xml version="1.0" encoding="UTF-8"?>
 <DPS xmlns="http://www.sped.fazenda.gov.br/nfse" versao="${xml(layoutVersion)}">
-  <infDPS Id="${xml(dpsId)}">
+  <infDPS Id="${xml(dpsId)}" versao="${xml(layoutVersion)}">
     <tpAmb>${environment === "production" ? "1" : "2"}</tpAmb>
     <dhEmi>${xml(emissionDateTime())}</dhEmi>
     <verAplic>erp-servicos-1.0</verAplic>
@@ -244,18 +246,37 @@ export function validateDpsInput(input: NfseNationalInput) {
 
 export function interpretNfseResponse(body: unknown): NfseProviderResult {
   const payload = body && typeof body === "object" && !Array.isArray(body) ? body as Row : {};
-  const externalId = clean(payload.numeroNfse || payload.numero_nfse || payload.numero);
+  const rawErrors = Array.isArray(payload.erros) ? payload.erros : [];
+  const errors = rawErrors.map((item) => {
+    const error = row(item);
+    const code = clean(error.Codigo || error.codigo);
+    const description = clean(error.Descricao || error.descricao);
+    const detail = clean(error.Complemento || error.complemento);
+    return [code, description, detail].filter(Boolean).join(" - ");
+  }).filter(Boolean);
+  const externalId = clean(payload.idNfse || payload.numeroNfse || payload.numero_nfse || payload.numero);
   const protocol = clean(payload.chaveAcesso || payload.chave_acesso || payload.protocolo);
   const verificationCode = clean(payload.codigoVerificacao || payload.codigo_verificacao);
-  const hasConfirmation = Boolean(externalId || protocol || verificationCode);
+  const hasConfirmation = Boolean(externalId || protocol || verificationCode || payload.nfseXmlGZipB64);
+
+  if (errors.length) {
+    return {
+      ok: false,
+      status: "rejeitada",
+      provider: "nfse_nacional",
+      message: errors.join(" | "),
+      protocol: clean(payload.idDPS) || undefined,
+      responsePayload: payload
+    };
+  }
 
   return {
-    ok: true,
-    status: hasConfirmation ? "autorizada" : "enfileirada",
+    ok: hasConfirmation,
+    status: hasConfirmation ? "autorizada" : "erro_integracao",
     provider: "nfse_nacional",
     message: hasConfirmation
-      ? "NFS-e Nacional emitida/confirmada pelo retorno do provedor."
-      : "DPS preparada e enfileirada; aguardando retorno oficial da NFS-e Nacional.",
+      ? "NFS-e Nacional autorizada pela SEFIN."
+      : clean(payload.mensagem || payload.message || payload.xMotivo) || "A SEFIN nao confirmou a emissao da NFS-e.",
     protocol,
     externalId,
     verificationCode,

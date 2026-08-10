@@ -7,6 +7,11 @@ import {
   type NfseNationalInput,
   type NfseProviderResult
 } from "@/lib/integrations/nfse-national";
+import {
+  signDpsXml,
+  transmitDps,
+  type NfseRuntimeCertificate
+} from "@/lib/integrations/nfse-transport";
 
 export async function requestNfseEmission(draft: NfseDraft) {
   const errors = validateNfseDraft(draft);
@@ -24,7 +29,11 @@ export async function requestNfseEmission(draft: NfseDraft) {
   throw new Error("Emissao NFS-e em producao exige autorizacao explicita.");
 }
 
-export async function requestNfseNationalEmission(input: NfseNationalInput): Promise<NfseProviderResult> {
+export async function requestNfseNationalEmission(
+  input: NfseNationalInput,
+  certificate?: NfseRuntimeCertificate,
+  certificateError?: string
+): Promise<NfseProviderResult> {
   const { dps, errors } = validateDpsInput(input);
   const endpoint = normalizeNfseNacionalEndpoint(process.env.NFSE_NACIONAL_ENDPOINT || "");
   const environment = process.env.NFSE_ENV === "production" ? "production" : "homologation";
@@ -56,7 +65,7 @@ export async function requestNfseNationalEmission(input: NfseNationalInput): Pro
       ok: true,
       status: "enfileirada",
       provider: "nfse-nacional-sandbox-mock",
-      message: "DPS validada e preparada. Emissao real bloqueada ate configurar certificado e NFSE_REAL_EMISSION=true.",
+      message: "DPS validada. Emissao real bloqueada porque NFSE_REAL_EMISSION nao esta habilitada.",
       protocol: dps.id,
       requestPayload,
       responsePayload: {
@@ -67,9 +76,45 @@ export async function requestNfseNationalEmission(input: NfseNationalInput): Pro
     };
   }
 
-  return interpretNfseResponse({
-    protocolo: dps.id,
-    status: "enfileirada",
-    message: "Transmissao real ainda exige cliente mTLS/certificado no runtime Next."
-  });
+  if (!certificate) {
+    return {
+      ok: false,
+      status: "erro_integracao",
+      provider: "nfse_nacional",
+      message: certificateError || "Certificado digital ativo nao encontrado para esta empresa.",
+      requestPayload
+    };
+  }
+
+  try {
+    const signedXml = signDpsXml(dps.xml, certificate);
+    const response = await transmitDps({
+      endpoint: requestPayload.endpoint as string,
+      signedXml,
+      certificate
+    });
+    return {
+      ...interpretNfseResponse(response),
+      requestPayload
+    };
+  } catch (error) {
+    const payload = error && typeof error === "object" && "payload" in error
+      ? (error as { payload?: unknown }).payload
+      : undefined;
+    const interpreted = payload ? interpretNfseResponse(payload) : null;
+    if (interpreted && !interpreted.ok) {
+      return { ...interpreted, requestPayload };
+    }
+
+    return {
+      ok: false,
+      status: "erro_integracao",
+      provider: "nfse_nacional",
+      message: error instanceof Error ? error.message : "Falha ao transmitir a DPS para a SEFIN.",
+      requestPayload,
+      responsePayload: payload && typeof payload === "object" && !Array.isArray(payload)
+        ? payload as Record<string, unknown>
+        : undefined
+    };
+  }
 }

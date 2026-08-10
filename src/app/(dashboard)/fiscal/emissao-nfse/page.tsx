@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/layout/page-header";
+import { NfseProcessForm } from "@/components/fiscal/nfse-process-form";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -60,6 +61,9 @@ export default async function EmissaoNfsePage({ searchParams }: EmissaoNfsePageP
     .limit(100);
   const allDocuments = (documents || []) as NfseRow[];
   const message = params?.status ? statusMessages[params.status] : null;
+  const realProduction = process.env.NFSE_ENV === "production"
+    && process.env.NFSE_PRODUCTION_ENABLED === "true"
+    && process.env.NFSE_REAL_EMISSION === "true";
 
   return (
     <>
@@ -111,10 +115,7 @@ export default async function EmissaoNfsePage({ searchParams }: EmissaoNfsePageP
                             Corrigir
                           </a>
                         ) : null}
-                        <form action="/api/fiscal/nfse/emitir" method="post">
-                          <input type="hidden" name="nfseDocumentId" value={document.id} />
-                          <button className="ghost-button compact-button" type="submit">Processar</button>
-                        </form>
+                        <NfseProcessForm documentId={document.id} realProduction={realProduction} />
                       </div>
                     </td>
                   </tr>
