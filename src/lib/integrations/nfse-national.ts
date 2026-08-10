@@ -224,6 +224,9 @@ export function buildDpsXml(input: NfseNationalInput) {
           <tribISSQN>1</tribISSQN>
           <tpRetISSQN>${fiscalValue(fiscalData, "retainIss") === true ? "2" : "1"}</tpRetISSQN>
         </tribMun>
+        <totTrib>
+          <indTotTrib>0</indTotTrib>
+        </totTrib>
       </trib>
     </valores>
   </infDPS>
