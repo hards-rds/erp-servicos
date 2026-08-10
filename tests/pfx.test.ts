@@ -8,7 +8,12 @@ import {
   decryptCertificateSecret,
   encryptCertificateSecret
 } from "../src/lib/certificates/secrets.ts";
-import { decodeNfseXml, encodeDpsXml, signDpsXml } from "../src/lib/integrations/nfse-transport.ts";
+import {
+  decodeNfseXml,
+  encodeDpsXml,
+  nfseHttpErrorMessage,
+  signDpsXml
+} from "../src/lib/integrations/nfse-transport.ts";
 
 function createTestPfx(password: string) {
   const keys = forge.pki.rsa.generateKeyPair(1024);
@@ -87,4 +92,11 @@ test("assina a DPS com RSA-SHA256 e compacta em GZip Base64", () => {
   assert.ok(signature);
   verifier.loadSignature(signature);
   assert.equal(verifier.checkSignature(signedXml), true);
+});
+
+test("traduz indisponibilidade HTTP da SEFIN sem expor HTML", () => {
+  const message = nfseHttpErrorMessage(503);
+  assert.match(message, /temporariamente indisponivel/);
+  assert.match(message, /HTTP 503/);
+  assert.doesNotMatch(message, /DOCTYPE|Service Unavailable/);
 });

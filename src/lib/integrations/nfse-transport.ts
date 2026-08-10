@@ -54,6 +54,13 @@ function parseResponseBody(body: string): unknown {
   }
 }
 
+export function nfseHttpErrorMessage(statusCode: number) {
+  if ([502, 503, 504].includes(statusCode)) {
+    return `A SEFIN Nacional esta temporariamente indisponivel (HTTP ${statusCode}). Tente emitir novamente em alguns minutos.`;
+  }
+  return `A SEFIN Nacional recusou a comunicacao (HTTP ${statusCode}). Tente novamente ou consulte a disponibilidade do servico.`;
+}
+
 export function transmitDps(options: {
   endpoint: string;
   signedXml: string;
@@ -92,16 +99,25 @@ export function transmitDps(options: {
         chunks.push(chunk);
       });
       response.on("end", () => {
-        try {
-          const payload = parseResponseBody(Buffer.concat(chunks).toString("utf8"));
-          const statusCode = response.statusCode || 500;
-          if (statusCode < 200 || statusCode >= 300) {
-            const error = new Error(`SEFIN respondeu HTTP ${statusCode}.`) as Error & { payload?: unknown };
-            error.payload = payload;
-            reject(error);
-            return;
+        const rawBody = Buffer.concat(chunks).toString("utf8");
+        const statusCode = response.statusCode || 500;
+
+        if (statusCode < 200 || statusCode >= 300) {
+          const error = new Error(nfseHttpErrorMessage(statusCode)) as Error & { payload?: unknown };
+          try {
+            const payload = parseResponseBody(rawBody);
+            if (payload && typeof payload === "object" && !Array.isArray(payload) && "erros" in payload) {
+              error.payload = payload;
+            }
+          } catch {
+            // Proxies da SEFIN podem responder HTML durante indisponibilidades.
           }
-          resolve(payload);
+          reject(error);
+          return;
+        }
+
+        try {
+          resolve(parseResponseBody(rawBody));
         } catch (error) {
           reject(error);
         }
