@@ -176,6 +176,21 @@ textarea {
   padding: 0 10px;
 }
 
+.table-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.table-error-detail {
+  max-width: 360px;
+  margin-top: 8px;
+  color: #f0b6b6;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .icon-button {
   width: 40px;
   display: inline-grid;

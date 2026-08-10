@@ -31,6 +31,10 @@ function collectFiscalServiceData(formData: FormData) {
   };
 }
 
+function hasValidNfseCodes(fiscalData: ReturnType<typeof collectFiscalServiceData>) {
+  return /^\d{7}$/.test(fiscalData.cityCode) && /^\d{6}$/.test(fiscalData.serviceCode);
+}
+
 async function generateContractFlow(input: {
   supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>;
   companyId: string;
@@ -187,23 +191,44 @@ export async function POST(request: NextRequest) {
     return redirectWith(request, "invalid");
   }
 
+  if (autoIssueNfse && !hasValidNfseCodes(fiscalServiceData)) {
+    return redirectWith(request, "fiscal_invalid");
+  }
+
+  const contractPayload = {
+    client_id: clientId,
+    service_description: serviceDescription,
+    recurring_amount: amount,
+    periodicity: readString(formData, "periodicity") || "mensal",
+    due_day: dueDay,
+    starts_at: readString(formData, "startsAt") || new Date().toISOString().slice(0, 10),
+    status: readString(formData, "status") || "ativo",
+    auto_issue_nfse: autoIssueNfse,
+    auto_generate_charge: autoGenerateCharge,
+    fiscal_service_data: fiscalServiceData,
+    notes: readString(formData, "notes") || null,
+    updated_by: profile.id,
+    updated_at: new Date().toISOString()
+  };
+
+  if (action === "update") {
+    if (!contractId) return redirectWith(request, "invalid");
+
+    const { error } = await supabase
+      .from("contracts")
+      .update(contractPayload)
+      .eq("id", contractId)
+      .eq("company_id", profile.company_id);
+
+    return redirectWith(request, error ? "error" : "updated");
+  }
+
   const { data: contract, error } = await supabase
     .from("contracts")
     .insert({
       company_id: profile.company_id,
-      client_id: clientId,
-      service_description: serviceDescription,
-      recurring_amount: amount,
-      periodicity: readString(formData, "periodicity") || "mensal",
-      due_day: dueDay,
-      starts_at: readString(formData, "startsAt") || new Date().toISOString().slice(0, 10),
-      status: readString(formData, "status") || "ativo",
-      auto_issue_nfse: autoIssueNfse,
-      auto_generate_charge: autoGenerateCharge,
-      fiscal_service_data: fiscalServiceData,
-      notes: readString(formData, "notes") || null,
+      ...contractPayload,
       created_by: profile.id,
-      updated_by: profile.id
     })
     .select("id,status")
     .single();

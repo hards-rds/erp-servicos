@@ -69,6 +69,17 @@ function fiscalValue(fiscalData: Row | null, key: string) {
   return typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? value : "";
 }
 
+function row(value: unknown): Row {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Row : {};
+}
+
+export function mergeNfseFiscalData(documentData: unknown, contractData: unknown) {
+  return {
+    ...row(documentData),
+    ...row(contractData)
+  };
+}
+
 function dpsNumber(seed: string) {
   let value = 0n;
   for (const char of seed) {
@@ -141,6 +152,7 @@ export function buildDpsXml(input: NfseNationalInput) {
   const municipalServiceCode = onlyDigits(fiscalValue(fiscalData, "municipalServiceCode")).slice(-3);
   const companyDocument = onlyDigits(input.company.document);
   const clientDocument = onlyDigits(input.client.document);
+  const clientDocumentTag = clientDocument.length === 11 ? "CPF" : "CNPJ";
   const municipalRegistration = onlyDigits(fiscalValue(fiscalData, "municipalRegistration"));
   const number = dpsNumber(`${input.documentId}:${input.entry.id}:${input.entry.competence}`);
   const serieId = series.padStart(5, "0");
@@ -176,7 +188,7 @@ export function buildDpsXml(input: NfseNationalInput) {
       </regTrib>
     </prest>
     <toma>
-      <CNPJ>${xml(clientDocument)}</CNPJ>
+      <${clientDocumentTag}>${xml(clientDocument)}</${clientDocumentTag}>
       <xNome>${xml(input.client.legal_name)}</xNome>
       ${cityCode && zipCode ? `<end>
         <endNac>

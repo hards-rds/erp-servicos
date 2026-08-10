@@ -1,4 +1,5 @@
 import { requestNfseEmission, requestNfseNationalEmission } from "@/lib/integrations/nfse-client";
+import { mergeNfseFiscalData } from "@/lib/integrations/nfse-national";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -6,6 +7,13 @@ export const runtime = "nodejs";
 
 function redirectWith(request: NextRequest, status: string) {
   return NextResponse.redirect(new URL(`/fiscal/emissao-nfse?status=${status}`, request.url), 303);
+}
+
+function redirectWithMessage(request: NextRequest, status: string, message: string) {
+  const target = new URL("/fiscal/emissao-nfse", request.url);
+  target.searchParams.set("status", status);
+  target.searchParams.set("message", message);
+  return NextResponse.redirect(target, 303);
 }
 
 export async function POST(request: NextRequest) {
@@ -62,10 +70,7 @@ export async function POST(request: NextRequest) {
     const client = Array.isArray(document.clients) ? document.clients[0] : document.clients;
     const entry = Array.isArray(document.financial_entries) ? document.financial_entries[0] : document.financial_entries;
     const contract = Array.isArray(entry?.contracts) ? entry?.contracts[0] : entry?.contracts;
-    const fiscalData = {
-      ...((contract?.fiscal_service_data && typeof contract.fiscal_service_data === "object") ? contract.fiscal_service_data : {}),
-      ...((document.request_payload && typeof document.request_payload === "object") ? document.request_payload : {})
-    };
+    const fiscalData = mergeNfseFiscalData(document.request_payload, contract?.fiscal_service_data);
 
     if (!company || !client || !entry) return redirectWith(request, "invalid");
 
@@ -99,7 +104,7 @@ export async function POST(request: NextRequest) {
       created_by: profile.id
     });
 
-    return redirectWith(request, result.ok ? "processed" : "rejected");
+    return redirectWithMessage(request, result.ok ? "processed" : "rejected", result.message);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha na emissao fiscal.";
     if ((request.headers.get("content-type") || "").includes("form")) {

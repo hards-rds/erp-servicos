@@ -7,8 +7,9 @@ type NfseRow = {
   competence: string;
   service_amount: number | string;
   status: string;
+  rejection_message: string | null;
   clients: { legal_name: string } | { legal_name: string }[] | null;
-  financial_entries: { description: string } | { description: string }[] | null;
+  financial_entries: { description: string; contract_id: string | null } | { description: string; contract_id: string | null }[] | null;
 };
 
 type EmissaoNfsePageProps = {
@@ -38,6 +39,11 @@ function getEntryName(document: NfseRow) {
   return entry?.description || "-";
 }
 
+function getContractId(document: NfseRow) {
+  const entry = Array.isArray(document.financial_entries) ? document.financial_entries[0] : document.financial_entries;
+  return entry?.contract_id || null;
+}
+
 function getTone(status: string) {
   if (["autorizada"].includes(status)) return "success" as const;
   if (["enfileirada", "validada", "enviada", "rejeitada", "erro_integracao"].includes(status)) return "warning" as const;
@@ -49,7 +55,7 @@ export default async function EmissaoNfsePage({ searchParams }: EmissaoNfsePageP
   const supabase = await createServerSupabaseClient();
   const { data: documents } = await supabase
     .from("nfse_documents")
-    .select("id,competence,service_amount,status,clients(legal_name),financial_entries(description)")
+    .select("id,competence,service_amount,status,rejection_message,clients(legal_name),financial_entries(description,contract_id)")
     .order("created_at", { ascending: false })
     .limit(100);
   const allDocuments = (documents || []) as NfseRow[];
@@ -89,12 +95,27 @@ export default async function EmissaoNfsePage({ searchParams }: EmissaoNfsePageP
                     <td>{getClientName(document)}</td>
                     <td>{document.competence}</td>
                     <td>{formatMoney(document.service_amount)}</td>
-                    <td><StatusBadge tone={getTone(document.status)}>{document.status}</StatusBadge></td>
                     <td>
-                      <form action="/api/fiscal/nfse/emitir" method="post">
-                        <input type="hidden" name="nfseDocumentId" value={document.id} />
-                        <button className="ghost-button compact-button" type="submit">Processar</button>
-                      </form>
+                      <StatusBadge tone={getTone(document.status)}>{document.status}</StatusBadge>
+                      {document.rejection_message ? (
+                        <div className="table-error-detail">{document.rejection_message}</div>
+                      ) : null}
+                    </td>
+                    <td>
+                      <div className="table-actions">
+                        {document.status === "rejeitada" && getContractId(document) ? (
+                          <a
+                            className="ghost-button button-link compact-button"
+                            href={`/cadastros/contratos?edit=${getContractId(document)}`}
+                          >
+                            Corrigir
+                          </a>
+                        ) : null}
+                        <form action="/api/fiscal/nfse/emitir" method="post">
+                          <input type="hidden" name="nfseDocumentId" value={document.id} />
+                          <button className="ghost-button compact-button" type="submit">Processar</button>
+                        </form>
+                      </div>
                     </td>
                   </tr>
                 ))

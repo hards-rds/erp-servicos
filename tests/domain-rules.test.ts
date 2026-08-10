@@ -5,6 +5,7 @@ import { dueDateForCompetence } from "../src/lib/dates/competence.ts";
 import { generateRecurringEntry } from "../src/domains/contracts/recurrence.ts";
 import { summarizeCashflow, assertPayableCanBeMarkedPaid } from "../src/domains/finance/cashflow.ts";
 import { nfseIdempotencyKey, validateNfseDraft } from "../src/domains/fiscal/nfse.ts";
+import { buildDpsXml, mergeNfseFiscalData } from "../src/lib/integrations/nfse-national.ts";
 import { interChargeIdempotencyKey, validateChargeDraft } from "../src/domains/billing/inter.ts";
 import { assertCannotChangeOwnElevation, can } from "../src/domains/users/permissions.ts";
 
@@ -67,6 +68,37 @@ test("valida NFS-e e chave idempotente", () => {
     competence: "2026-07",
     amountCents: 1000
   }), ["Codigo de servico obrigatorio.", "Municipio de incidencia obrigatorio."]);
+});
+
+test("reprocessa NFS-e com os dados fiscais corrigidos no contrato", () => {
+  assert.deepEqual(
+    mergeNfseFiscalData(
+      { cityCode: "", serviceCode: "", provider: "nfse_nacional" },
+      { cityCode: "3106200", serviceCode: "010701" }
+    ),
+    { cityCode: "3106200", serviceCode: "010701", provider: "nfse_nacional" }
+  );
+
+  const dps = buildDpsXml({
+    documentId: "documento-1",
+    company: { name: "Emitente", document: "04.252.011/0001-10" },
+    client: {
+      legal_name: "Tomador pessoa fisica",
+      document: "529.982.247-25",
+      fiscal_email: null,
+      phone: null,
+      address: null
+    },
+    entry: {
+      id: "entrada-1",
+      description: "Suporte tecnico",
+      competence: "2026-08",
+      net_amount: 100
+    },
+    fiscalData: { cityCode: "3106200", serviceCode: "010701" }
+  });
+
+  assert.match(dps.xml, /<CPF>52998224725<\/CPF>/);
 });
 
 test("valida cobranca Inter e idempotencia", () => {
