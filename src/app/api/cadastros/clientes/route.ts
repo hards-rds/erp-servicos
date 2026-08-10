@@ -60,6 +60,7 @@ export async function POST(request: NextRequest) {
     complement: readString(formData, "complement"),
     district: readString(formData, "district"),
     city: readString(formData, "city"),
+    cityCode: onlyDigits(readString(formData, "cityCode")),
     state: readString(formData, "state").toUpperCase(),
     zipCode: onlyDigits(readString(formData, "zipCode"))
   };

@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
         competence,
         service_amount,
         request_payload,
-        companies(name,document),
+        companies(name,document,fiscal_settings),
         clients(legal_name,document,fiscal_email,phone,address),
         financial_entries(id,description,competence,net_amount,contracts(fiscal_service_data))
       `)

@@ -19,6 +19,7 @@ type LookupResponse = {
     complement?: string;
     district?: string;
     city?: string;
+    cityCode?: string;
     state?: string;
     zipCode?: string;
   };
@@ -42,6 +43,7 @@ type ClientFormValues = {
     complement?: string;
     district?: string;
     city?: string;
+    cityCode?: string;
     state?: string;
     zipCode?: string;
   };
@@ -71,6 +73,7 @@ export function ClientForm({ action = "create", initialValues, submitLabel }: Cl
     complement: initialValues?.address?.complement || "",
     district: initialValues?.address?.district || "",
     city: initialValues?.address?.city || "",
+    cityCode: initialValues?.address?.cityCode || "",
     state: initialValues?.address?.state || "",
     zipCode: initialValues?.address?.zipCode || ""
   });
@@ -102,6 +105,7 @@ export function ClientForm({ action = "create", initialValues, submitLabel }: Cl
       complement: data.address?.complement || current.complement,
       district: data.address?.district || current.district,
       city: data.address?.city || current.city,
+      cityCode: data.address?.cityCode || current.cityCode,
       state: data.address?.state || current.state,
       zipCode: data.address?.zipCode || current.zipCode
     }));
@@ -273,6 +277,17 @@ export function ClientForm({ action = "create", initialValues, submitLabel }: Cl
             value={fields.city}
             onChange={(event) => setFields({ ...fields, city: event.target.value })}
             placeholder="Cidade"
+          />
+        </label>
+        <label>
+          Codigo IBGE da cidade
+          <input
+            name="cityCode"
+            inputMode="numeric"
+            maxLength={7}
+            value={fields.cityCode}
+            onChange={(event) => setFields({ ...fields, cityCode: event.target.value })}
+            placeholder="Ex.: 3170206"
           />
         </label>
       </div>

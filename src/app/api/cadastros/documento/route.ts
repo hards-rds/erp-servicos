@@ -12,6 +12,7 @@ type BrasilApiCnpj = {
   complemento?: string;
   bairro?: string;
   municipio?: string;
+  codigo_municipio_ibge?: number | string;
   uf?: string;
   cep?: string;
 };
@@ -69,6 +70,7 @@ export async function GET(request: NextRequest) {
       complement: data.complemento || "",
       district: data.bairro || "",
       city: data.municipio || "",
+      cityCode: String(data.codigo_municipio_ibge || ""),
       state: data.uf || "",
       zipCode: data.cep || ""
     }

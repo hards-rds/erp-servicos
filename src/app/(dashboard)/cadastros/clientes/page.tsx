@@ -12,6 +12,7 @@ type ClientAddress = {
   complement?: string;
   district?: string;
   city?: string;
+  cityCode?: string;
   state?: string;
   zipCode?: string;
 };

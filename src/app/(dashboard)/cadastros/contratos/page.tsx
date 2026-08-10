@@ -37,7 +37,7 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   inactive: { kind: "error", text: "Somente contratos ativos geram fluxo recorrente." },
   fiscal_invalid: {
     kind: "error",
-    text: "Para emitir NFS-e, informe o codigo IBGE do municipio com 7 digitos e o codigo nacional do servico com 6 digitos."
+    text: "Para emitir NFS-e, informe o codigo nacional do servico com 6 digitos."
   },
   invalid: { kind: "error", text: "Revise cliente, servico, valor e dia de vencimento." },
   error: { kind: "error", text: "Nao foi possivel cadastrar o contrato agora." },
@@ -59,12 +59,6 @@ function fiscalString(data: Record<string, unknown> | null | undefined, key: str
 
 function fiscalBoolean(data: Record<string, unknown> | null | undefined, key: string) {
   return data?.[key] === true;
-}
-
-function fiscalSimpleNationalStatus(data: Record<string, unknown> | null | undefined) {
-  const status = fiscalString(data, "simpleNationalStatus");
-  if (["1", "2", "3"].includes(status)) return status;
-  return fiscalBoolean(data, "simpleNational") ? "3" : "1";
 }
 
 function getClientName(contract: ContractRow) {
@@ -235,40 +229,7 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
               </label>
             </fieldset>
             <fieldset className="checkbox-panel">
-              <legend>Dados fiscais para NFS-e Nacional</legend>
-              <div className="form-grid">
-                <label>
-                  Ambiente NFS-e
-                  <select name="nfseEnvironment" defaultValue={fiscalString(editingFiscal, "environment", "homologation")}>
-                    <option value="homologation">Homologacao</option>
-                    <option value="production">Producao</option>
-                  </select>
-                </label>
-                <label>
-                  Serie DPS
-                  <input name="series" defaultValue={fiscalString(editingFiscal, "series", "1")} />
-                </label>
-              </div>
-              <div className="form-grid">
-                <label>
-                  Codigo IBGE municipio
-                  <input
-                    name="cityCode"
-                    inputMode="numeric"
-                    maxLength={7}
-                    placeholder="Ex.: 3106200"
-                    defaultValue={fiscalString(editingFiscal, "cityCode")}
-                  />
-                </label>
-                <label>
-                  Inscricao municipal emitente
-                  <input
-                    name="municipalRegistration"
-                    placeholder="Inscricao municipal"
-                    defaultValue={fiscalString(editingFiscal, "municipalRegistration")}
-                  />
-                </label>
-              </div>
+              <legend>Servico na NFS-e</legend>
               <div className="form-grid">
                 <label>
                   Codigo nacional do servico
@@ -289,20 +250,10 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
                   />
                 </label>
               </div>
-              <div className="form-grid">
-                <label>
-                  Situacao no Simples Nacional
-                  <select name="simpleNationalStatus" defaultValue={fiscalSimpleNationalStatus(editingFiscal)}>
-                    <option value="1">Nao optante</option>
-                    <option value="2">Optante - MEI</option>
-                    <option value="3">Optante - ME/EPP</option>
-                  </select>
-                </label>
-                <label className="checkbox-row">
-                  <input type="checkbox" name="retainIss" defaultChecked={fiscalBoolean(editingFiscal, "retainIss")} />
-                  <span>Reter ISSQN</span>
-                </label>
-              </div>
+              <label className="checkbox-row">
+                <input type="checkbox" name="retainIss" defaultChecked={fiscalBoolean(editingFiscal, "retainIss")} />
+                <span>Reter ISSQN nesta operacao</span>
+              </label>
             </fieldset>
             <label>
               Observacoes

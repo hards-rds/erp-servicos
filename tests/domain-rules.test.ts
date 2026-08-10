@@ -71,24 +71,34 @@ test("valida NFS-e e chave idempotente", () => {
   }), ["Codigo de servico obrigatorio.", "Municipio de incidencia obrigatorio."]);
 });
 
-test("reprocessa NFS-e com os dados fiscais corrigidos no contrato", () => {
+test("separa emitente, tomador e servico ao montar a DPS", () => {
   assert.deepEqual(
     mergeNfseFiscalData(
-      { cityCode: "", serviceCode: "", provider: "nfse_nacional" },
-      { cityCode: "3106200", serviceCode: "010701" }
+      { serviceCode: "", provider: "nfse_nacional" },
+      { serviceCode: "010701" }
     ),
-    { cityCode: "3106200", serviceCode: "010701", provider: "nfse_nacional" }
+    { serviceCode: "010701", provider: "nfse_nacional" }
   );
 
   const dps = buildDpsXml({
     documentId: "documento-1",
-    company: { name: "Emitente", document: "04.252.011/0001-10" },
+    company: {
+      name: "Emitente",
+      document: "04.252.011/0001-10",
+      fiscal_settings: {
+        cityCode: "3170206",
+        series: "1",
+        simpleNationalStatus: "3",
+        simpleNationalAssessmentRegime: "1",
+        specialTaxRegime: "0"
+      }
+    },
     client: {
       legal_name: "Tomador pessoa fisica",
       document: "529.982.247-25",
       fiscal_email: null,
       phone: null,
-      address: null
+      address: { cityCode: "3550308", zipCode: "01001000" }
     },
     entry: {
       id: "entrada-1",
@@ -96,20 +106,17 @@ test("reprocessa NFS-e com os dados fiscais corrigidos no contrato", () => {
       competence: "2026-08",
       net_amount: 100
     },
-    fiscalData: {
-      cityCode: "3106200",
-      serviceCode: "010701",
-      layoutVersion: "1.00",
-      simpleNationalStatus: "3"
-    }
+    fiscalData: { serviceCode: "010701" }
   });
 
   assert.match(dps.xml, /<CPF>52998224725<\/CPF>/);
   assert.match(dps.xml, /<DPS xmlns="http:\/\/www\.sped\.fazenda\.gov\.br\/nfse" versao="1.01">/);
   assert.match(dps.xml, /<infDPS Id="[^"]+">/);
   assert.doesNotMatch(dps.xml, /<infDPS[^>]+versao=/);
-  assert.doesNotMatch(dps.xml, /versao="1.00"/);
+  assert.match(dps.xml, /<cLocEmi>3170206<\/cLocEmi>/);
+  assert.match(dps.xml, /<cMun>3550308<\/cMun>/);
   assert.match(dps.xml, /<opSimpNac>3<\/opSimpNac>/);
+  assert.match(dps.xml, /<regApTribSN>1<\/regApTribSN>/);
   assert.match(dps.xml, /<trib>[\s\S]*<tribMun>[\s\S]*<\/tribMun>[\s\S]*<totTrib>[\s\S]*<indTotTrib>0<\/indTotTrib>[\s\S]*<\/totTrib>[\s\S]*<\/trib>/);
 });
 

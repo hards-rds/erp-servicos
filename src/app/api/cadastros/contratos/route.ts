@@ -17,28 +17,16 @@ function redirectWith(request: NextRequest, status: string) {
 }
 
 function collectFiscalServiceData(formData: FormData) {
-  const configuredSimpleNationalStatus = readString(formData, "simpleNationalStatus");
-  const simpleNationalStatus = ["1", "2", "3"].includes(configuredSimpleNationalStatus)
-    ? configuredSimpleNationalStatus
-    : "1";
-
   return {
     provider: "nfse_nacional",
-    environment: readString(formData, "nfseEnvironment") || "homologation",
-    cityCode: readString(formData, "cityCode"),
     serviceCode: readString(formData, "serviceCode"),
     municipalServiceCode: readString(formData, "municipalServiceCode"),
-    municipalRegistration: readString(formData, "municipalRegistration"),
-    series: readString(formData, "series") || "1",
-    layoutVersion: readString(formData, "layoutVersion") || "1.01",
-    retainIss: formData.get("retainIss") === "on",
-    simpleNationalStatus,
-    simpleNational: simpleNationalStatus !== "1"
+    retainIss: formData.get("retainIss") === "on"
   };
 }
 
 function hasValidNfseCodes(fiscalData: ReturnType<typeof collectFiscalServiceData>) {
-  return /^\d{7}$/.test(fiscalData.cityCode) && /^\d{6}$/.test(fiscalData.serviceCode);
+  return /^\d{6}$/.test(fiscalData.serviceCode);
 }
 
 async function generateContractFlow(input: {

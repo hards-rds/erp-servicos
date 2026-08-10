@@ -5,6 +5,7 @@ export type NfseNationalInput = {
   company: {
     name: string;
     document: string | null;
+    fiscal_settings: Row | null;
   };
   client: {
     legal_name: string;
@@ -146,26 +147,27 @@ export function validateNfseEnvironment(environment: string, endpoint: string) {
 
 export function buildDpsXml(input: NfseNationalInput) {
   const fiscalData = input.fiscalData || {};
-  const environment = clean(fiscalValue(fiscalData, "environment")) || process.env.NFSE_ENV || "homologation";
-  const series = clean(fiscalValue(fiscalData, "series")) || "1";
+  const emitterFiscalData = input.company.fiscal_settings || {};
+  const environment = process.env.NFSE_ENV === "production" ? "production" : "homologation";
+  const series = clean(fiscalValue(emitterFiscalData, "series")) || "1";
   const layoutVersion = "1.01";
-  const cityCode = onlyDigits(fiscalValue(fiscalData, "cityCode"));
+  const cityCode = onlyDigits(fiscalValue(emitterFiscalData, "cityCode"));
   const serviceCode = onlyDigits(fiscalValue(fiscalData, "serviceCode")).slice(0, 6);
   const municipalServiceCode = onlyDigits(fiscalValue(fiscalData, "municipalServiceCode")).slice(-3);
   const companyDocument = onlyDigits(input.company.document);
   const clientDocument = onlyDigits(input.client.document);
   const clientDocumentTag = clientDocument.length === 11 ? "CPF" : "CNPJ";
-  const municipalRegistration = onlyDigits(fiscalValue(fiscalData, "municipalRegistration"));
-  const configuredSimpleNationalStatus = clean(fiscalValue(fiscalData, "simpleNationalStatus"));
-  const simpleNationalStatus = ["1", "2", "3"].includes(configuredSimpleNationalStatus)
-    ? configuredSimpleNationalStatus
-    : fiscalValue(fiscalData, "simpleNational") === true ? "3" : "1";
+  const municipalRegistration = onlyDigits(fiscalValue(emitterFiscalData, "municipalRegistration"));
+  const simpleNationalStatus = clean(fiscalValue(emitterFiscalData, "simpleNationalStatus"));
+  const simpleNationalAssessmentRegime = clean(fiscalValue(emitterFiscalData, "simpleNationalAssessmentRegime"));
+  const specialTaxRegime = clean(fiscalValue(emitterFiscalData, "specialTaxRegime")) || "0";
   const number = dpsNumber(`${input.documentId}:${input.entry.id}:${input.entry.competence}`);
   const serieId = series.padStart(5, "0");
   const numeroId = number.padStart(15, "0");
   const dpsId = `DPS${cityCode}2${companyDocument}${serieId}${numeroId}`;
   const address = input.client.address || {};
   const zipCode = onlyDigits(addressValue(address, "zipCode"));
+  const clientCityCode = onlyDigits(addressValue(address, "cityCode"));
 
   return {
     id: dpsId,
@@ -174,6 +176,8 @@ export function buildDpsXml(input: NfseNationalInput) {
     cityCode,
     serviceCode,
     environment,
+    simpleNationalStatus,
+    simpleNationalAssessmentRegime,
     xml: `<?xml version="1.0" encoding="UTF-8"?>
 <DPS xmlns="http://www.sped.fazenda.gov.br/nfse" versao="${xml(layoutVersion)}">
   <infDPS Id="${xml(dpsId)}">
@@ -190,15 +194,16 @@ export function buildDpsXml(input: NfseNationalInput) {
       ${municipalRegistration ? `<IM>${xml(municipalRegistration)}</IM>` : ""}
       <regTrib>
         <opSimpNac>${simpleNationalStatus}</opSimpNac>
-        <regEspTrib>0</regEspTrib>
+        ${simpleNationalStatus === "3" ? `<regApTribSN>${simpleNationalAssessmentRegime}</regApTribSN>` : ""}
+        <regEspTrib>${specialTaxRegime}</regEspTrib>
       </regTrib>
     </prest>
     <toma>
       <${clientDocumentTag}>${xml(clientDocument)}</${clientDocumentTag}>
       <xNome>${xml(input.client.legal_name)}</xNome>
-      ${cityCode && zipCode ? `<end>
+      ${clientCityCode && zipCode ? `<end>
         <endNac>
-          <cMun>${xml(cityCode)}</cMun>
+          <cMun>${xml(clientCityCode)}</cMun>
           <CEP>${xml(zipCode)}</CEP>
         </endNac>
         <xLgr>${xml(addressValue(address, "street") || "NAO INFORMADO")}</xLgr>
@@ -244,7 +249,11 @@ export function validateDpsInput(input: NfseNationalInput) {
 
   if (onlyDigits(input.company.document).length !== 14) errors.push("CNPJ do emitente obrigatorio em Configuracoes Gerais.");
   if (![11, 14].includes(onlyDigits(input.client.document).length)) errors.push("CPF/CNPJ do tomador invalido.");
-  if (dps.cityCode.length !== 7) errors.push("Codigo IBGE do municipio de incidencia obrigatorio.");
+  if (dps.cityCode.length !== 7) errors.push("Codigo IBGE do emitente obrigatorio em Configuracoes Gerais.");
+  if (!["1", "2", "3"].includes(dps.simpleNationalStatus)) errors.push("Situacao do prestador no Simples Nacional obrigatoria em Configuracoes Gerais.");
+  if (dps.simpleNationalStatus === "3" && !["1", "2", "3"].includes(dps.simpleNationalAssessmentRegime)) {
+    errors.push("Regime de apuracao do Simples Nacional obrigatorio em Configuracoes Gerais.");
+  }
   if (dps.serviceCode.length !== 6) errors.push("Codigo nacional de servico NFS-e obrigatorio com 6 digitos.");
   if (Number(input.entry.net_amount) <= 0) errors.push("Valor da nota deve ser maior que zero.");
 
