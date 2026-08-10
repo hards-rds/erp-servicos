@@ -11,7 +11,11 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   missing: { kind: "error", text: "Selecione o arquivo PFX/P12 e informe a senha." },
   invalid_type: { kind: "error", text: "Envie um arquivo com extensao .pfx ou .p12." },
   too_large: { kind: "error", text: "O certificado deve ter no maximo 2 MB." },
-  invalid_password: { kind: "error", text: "Nao foi possivel abrir o certificado. Confira arquivo e senha." },
+  invalid_password: { kind: "error", text: "A senha informada nao abriu o certificado." },
+  invalid_certificate: {
+    kind: "error",
+    text: "O arquivo nao foi reconhecido como um certificado A1 PFX/P12 valido. Exporte-o novamente com a chave privada."
+  },
   expired: { kind: "error", text: "Este certificado esta vencido." },
   forbidden: { kind: "error", text: "Apenas usuarios master podem cadastrar certificados." },
   error: { kind: "error", text: "Nao foi possivel salvar o certificado agora." }
