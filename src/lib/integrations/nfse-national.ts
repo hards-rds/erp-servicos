@@ -156,6 +156,10 @@ export function buildDpsXml(input: NfseNationalInput) {
   const clientDocument = onlyDigits(input.client.document);
   const clientDocumentTag = clientDocument.length === 11 ? "CPF" : "CNPJ";
   const municipalRegistration = onlyDigits(fiscalValue(fiscalData, "municipalRegistration"));
+  const configuredSimpleNationalStatus = clean(fiscalValue(fiscalData, "simpleNationalStatus"));
+  const simpleNationalStatus = ["1", "2", "3"].includes(configuredSimpleNationalStatus)
+    ? configuredSimpleNationalStatus
+    : fiscalValue(fiscalData, "simpleNational") === true ? "3" : "1";
   const number = dpsNumber(`${input.documentId}:${input.entry.id}:${input.entry.competence}`);
   const serieId = series.padStart(5, "0");
   const numeroId = number.padStart(15, "0");
@@ -185,7 +189,7 @@ export function buildDpsXml(input: NfseNationalInput) {
       <CNPJ>${xml(companyDocument)}</CNPJ>
       ${municipalRegistration ? `<IM>${xml(municipalRegistration)}</IM>` : ""}
       <regTrib>
-        <opSimpNac>${fiscalValue(fiscalData, "simpleNational") === true ? "3" : "1"}</opSimpNac>
+        <opSimpNac>${simpleNationalStatus}</opSimpNac>
         <regEspTrib>0</regEspTrib>
       </regTrib>
     </prest>

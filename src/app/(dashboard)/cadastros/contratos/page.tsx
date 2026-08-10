@@ -61,6 +61,12 @@ function fiscalBoolean(data: Record<string, unknown> | null | undefined, key: st
   return data?.[key] === true;
 }
 
+function fiscalSimpleNationalStatus(data: Record<string, unknown> | null | undefined) {
+  const status = fiscalString(data, "simpleNationalStatus");
+  if (["1", "2", "3"].includes(status)) return status;
+  return fiscalBoolean(data, "simpleNational") ? "3" : "1";
+}
+
 function getClientName(contract: ContractRow) {
   const client = Array.isArray(contract.clients) ? contract.clients[0] : contract.clients;
   return client?.legal_name || "-";
@@ -284,9 +290,13 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
                 </label>
               </div>
               <div className="form-grid">
-                <label className="checkbox-row">
-                  <input type="checkbox" name="simpleNational" defaultChecked={fiscalBoolean(editingFiscal, "simpleNational")} />
-                  <span>Emitente optante pelo Simples Nacional</span>
+                <label>
+                  Situacao no Simples Nacional
+                  <select name="simpleNationalStatus" defaultValue={fiscalSimpleNationalStatus(editingFiscal)}>
+                    <option value="1">Nao optante</option>
+                    <option value="2">Optante - MEI</option>
+                    <option value="3">Optante - ME/EPP</option>
+                  </select>
                 </label>
                 <label className="checkbox-row">
                   <input type="checkbox" name="retainIss" defaultChecked={fiscalBoolean(editingFiscal, "retainIss")} />

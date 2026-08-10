@@ -17,6 +17,11 @@ function redirectWith(request: NextRequest, status: string) {
 }
 
 function collectFiscalServiceData(formData: FormData) {
+  const configuredSimpleNationalStatus = readString(formData, "simpleNationalStatus");
+  const simpleNationalStatus = ["1", "2", "3"].includes(configuredSimpleNationalStatus)
+    ? configuredSimpleNationalStatus
+    : "1";
+
   return {
     provider: "nfse_nacional",
     environment: readString(formData, "nfseEnvironment") || "homologation",
@@ -27,7 +32,8 @@ function collectFiscalServiceData(formData: FormData) {
     series: readString(formData, "series") || "1",
     layoutVersion: readString(formData, "layoutVersion") || "1.01",
     retainIss: formData.get("retainIss") === "on",
-    simpleNational: formData.get("simpleNational") === "on"
+    simpleNationalStatus,
+    simpleNational: simpleNationalStatus !== "1"
   };
 }
 

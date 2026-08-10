@@ -96,7 +96,12 @@ test("reprocessa NFS-e com os dados fiscais corrigidos no contrato", () => {
       competence: "2026-08",
       net_amount: 100
     },
-    fiscalData: { cityCode: "3106200", serviceCode: "010701", layoutVersion: "1.00" }
+    fiscalData: {
+      cityCode: "3106200",
+      serviceCode: "010701",
+      layoutVersion: "1.00",
+      simpleNationalStatus: "3"
+    }
   });
 
   assert.match(dps.xml, /<CPF>52998224725<\/CPF>/);
@@ -104,6 +109,7 @@ test("reprocessa NFS-e com os dados fiscais corrigidos no contrato", () => {
   assert.match(dps.xml, /<infDPS Id="[^"]+">/);
   assert.doesNotMatch(dps.xml, /<infDPS[^>]+versao=/);
   assert.doesNotMatch(dps.xml, /versao="1.00"/);
+  assert.match(dps.xml, /<opSimpNac>3<\/opSimpNac>/);
   assert.match(dps.xml, /<trib>[\s\S]*<tribMun>[\s\S]*<\/tribMun>[\s\S]*<totTrib>[\s\S]*<indTotTrib>0<\/indTotTrib>[\s\S]*<\/totTrib>[\s\S]*<\/trib>/);
 });
 
