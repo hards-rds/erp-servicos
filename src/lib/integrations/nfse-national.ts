@@ -148,7 +148,7 @@ export function buildDpsXml(input: NfseNationalInput) {
   const fiscalData = input.fiscalData || {};
   const environment = clean(fiscalValue(fiscalData, "environment")) || process.env.NFSE_ENV || "homologation";
   const series = clean(fiscalValue(fiscalData, "series")) || "1";
-  const layoutVersion = clean(fiscalValue(fiscalData, "layoutVersion")) || "1.01";
+  const layoutVersion = "1.01";
   const cityCode = onlyDigits(fiscalValue(fiscalData, "cityCode"));
   const serviceCode = onlyDigits(fiscalValue(fiscalData, "serviceCode")).slice(0, 6);
   const municipalServiceCode = onlyDigits(fiscalValue(fiscalData, "municipalServiceCode")).slice(-3);
@@ -172,7 +172,7 @@ export function buildDpsXml(input: NfseNationalInput) {
     environment,
     xml: `<?xml version="1.0" encoding="UTF-8"?>
 <DPS xmlns="http://www.sped.fazenda.gov.br/nfse" versao="${xml(layoutVersion)}">
-  <infDPS Id="${xml(dpsId)}" versao="${xml(layoutVersion)}">
+  <infDPS Id="${xml(dpsId)}">
     <tpAmb>${environment === "production" ? "1" : "2"}</tpAmb>
     <dhEmi>${xml(emissionDateTime())}</dhEmi>
     <verAplic>erp-servicos-1.0</verAplic>

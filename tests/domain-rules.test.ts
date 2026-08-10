@@ -96,11 +96,14 @@ test("reprocessa NFS-e com os dados fiscais corrigidos no contrato", () => {
       competence: "2026-08",
       net_amount: 100
     },
-    fiscalData: { cityCode: "3106200", serviceCode: "010701" }
+    fiscalData: { cityCode: "3106200", serviceCode: "010701", layoutVersion: "1.00" }
   });
 
   assert.match(dps.xml, /<CPF>52998224725<\/CPF>/);
-  assert.match(dps.xml, /<infDPS Id="[^"]+" versao="1.01">/);
+  assert.match(dps.xml, /<DPS xmlns="http:\/\/www\.sped\.fazenda\.gov\.br\/nfse" versao="1.01">/);
+  assert.match(dps.xml, /<infDPS Id="[^"]+">/);
+  assert.doesNotMatch(dps.xml, /<infDPS[^>]+versao=/);
+  assert.doesNotMatch(dps.xml, /versao="1.00"/);
 });
 
 test("preserva a rejeicao detalhada devolvida pela SEFIN", () => {

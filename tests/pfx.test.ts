@@ -69,7 +69,7 @@ test("assina a DPS com RSA-SHA256 e compacta em GZip Base64", () => {
   const password = "senha-teste";
   const pfx = createTestPfx(password);
   const materials = extractPfxSigningMaterials(pfx, password);
-  const xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><DPS xmlns=\"http://www.sped.fazenda.gov.br/nfse\" versao=\"1.01\"><infDPS Id=\"DPS123\" versao=\"1.01\"><tpAmb>2</tpAmb></infDPS></DPS>";
+  const xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><DPS xmlns=\"http://www.sped.fazenda.gov.br/nfse\" versao=\"1.01\"><infDPS Id=\"DPS123\"><tpAmb>2</tpAmb></infDPS></DPS>";
   const signedXml = signDpsXml(xml, {
     pfx,
     password,
