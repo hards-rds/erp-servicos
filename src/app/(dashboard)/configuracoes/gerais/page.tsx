@@ -136,6 +136,16 @@ export default async function GeraisPage({ searchParams }: GeraisPageProps) {
                 </select>
               </label>
             </div>
+            <label>
+              Percentual aproximado dos tributos do Simples Nacional (%)
+              <input
+                name="simpleNationalTotalTaxRate"
+                inputMode="decimal"
+                defaultValue={fiscalString(fiscalSettings, "simpleNationalTotalTaxRate")}
+                placeholder="Ex.: 6,00"
+                disabled={!isMaster}
+              />
+            </label>
           </fieldset>
           <button className="primary-button" type="submit" disabled={!isMaster}>Salvar</button>
         </form>

@@ -90,6 +90,7 @@ test("separa emitente, tomador e servico ao montar a DPS", () => {
         series: "1",
         simpleNationalStatus: "3",
         simpleNationalAssessmentRegime: "1",
+        simpleNationalTotalTaxRate: "6.00",
         specialTaxRegime: "0"
       }
     },
@@ -117,7 +118,8 @@ test("separa emitente, tomador e servico ao montar a DPS", () => {
   assert.match(dps.xml, /<cMun>3550308<\/cMun>/);
   assert.match(dps.xml, /<opSimpNac>3<\/opSimpNac>/);
   assert.match(dps.xml, /<regApTribSN>1<\/regApTribSN>/);
-  assert.match(dps.xml, /<trib>[\s\S]*<tribMun>[\s\S]*<\/tribMun>[\s\S]*<totTrib>[\s\S]*<indTotTrib>0<\/indTotTrib>[\s\S]*<\/totTrib>[\s\S]*<\/trib>/);
+  assert.match(dps.xml, /<trib>[\s\S]*<tribMun>[\s\S]*<\/tribMun>[\s\S]*<totTrib>[\s\S]*<pTotTribSN>6\.00<\/pTotTribSN>[\s\S]*<\/totTrib>[\s\S]*<\/trib>/);
+  assert.doesNotMatch(dps.xml, /<indTotTrib>/);
 });
 
 test("preserva a rejeicao detalhada devolvida pela SEFIN", () => {

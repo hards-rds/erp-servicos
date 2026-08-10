@@ -160,6 +160,7 @@ export function buildDpsXml(input: NfseNationalInput) {
   const municipalRegistration = onlyDigits(fiscalValue(emitterFiscalData, "municipalRegistration"));
   const simpleNationalStatus = clean(fiscalValue(emitterFiscalData, "simpleNationalStatus"));
   const simpleNationalAssessmentRegime = clean(fiscalValue(emitterFiscalData, "simpleNationalAssessmentRegime"));
+  const simpleNationalTotalTaxRate = Number(clean(fiscalValue(emitterFiscalData, "simpleNationalTotalTaxRate")).replace(",", "."));
   const specialTaxRegime = clean(fiscalValue(emitterFiscalData, "specialTaxRegime")) || "0";
   const number = dpsNumber(`${input.documentId}:${input.entry.id}:${input.entry.competence}`);
   const serieId = series.padStart(5, "0");
@@ -178,6 +179,7 @@ export function buildDpsXml(input: NfseNationalInput) {
     environment,
     simpleNationalStatus,
     simpleNationalAssessmentRegime,
+    simpleNationalTotalTaxRate,
     xml: `<?xml version="1.0" encoding="UTF-8"?>
 <DPS xmlns="http://www.sped.fazenda.gov.br/nfse" versao="${xml(layoutVersion)}">
   <infDPS Id="${xml(dpsId)}">
@@ -234,7 +236,9 @@ export function buildDpsXml(input: NfseNationalInput) {
           <tpRetISSQN>${fiscalValue(fiscalData, "retainIss") === true ? "2" : "1"}</tpRetISSQN>
         </tribMun>
         <totTrib>
-          <indTotTrib>0</indTotTrib>
+          ${simpleNationalStatus === "3"
+            ? `<pTotTribSN>${decimal(simpleNationalTotalTaxRate)}</pTotTribSN>`
+            : "<indTotTrib>0</indTotTrib>"}
         </totTrib>
       </trib>
     </valores>
@@ -253,6 +257,9 @@ export function validateDpsInput(input: NfseNationalInput) {
   if (!["1", "2", "3"].includes(dps.simpleNationalStatus)) errors.push("Situacao do prestador no Simples Nacional obrigatoria em Configuracoes Gerais.");
   if (dps.simpleNationalStatus === "3" && !["1", "2", "3"].includes(dps.simpleNationalAssessmentRegime)) {
     errors.push("Regime de apuracao do Simples Nacional obrigatorio em Configuracoes Gerais.");
+  }
+  if (dps.simpleNationalStatus === "3" && (!Number.isFinite(dps.simpleNationalTotalTaxRate) || dps.simpleNationalTotalTaxRate <= 0 || dps.simpleNationalTotalTaxRate >= 100)) {
+    errors.push("Percentual aproximado dos tributos do Simples Nacional obrigatorio em Configuracoes Gerais.");
   }
   if (dps.serviceCode.length !== 6) errors.push("Codigo nacional de servico NFS-e obrigatorio com 6 digitos.");
   if (Number(input.entry.net_amount) <= 0) errors.push("Valor da nota deve ser maior que zero.");
