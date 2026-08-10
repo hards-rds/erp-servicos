@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { serviceDeletionBlock } from "@/domains/services/deletion";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 function readString(formData: FormData, key: string) {
@@ -139,6 +140,54 @@ export async function POST(request: NextRequest) {
   const clientId = readString(formData, "clientId");
   const serviceDescription = readString(formData, "serviceDescription");
   const amount = parseMoney(readString(formData, "amount"));
+
+  if (action === "delete") {
+    if (!serviceId) {
+      return NextResponse.redirect(new URL("/cadastros/servicos?status=invalid_delete", request.url), 303);
+    }
+
+    const { data: service } = await supabase
+      .from("service_records")
+      .select("id,status")
+      .eq("id", serviceId)
+      .eq("company_id", profile.company_id)
+      .maybeSingle();
+
+    if (!service) {
+      return NextResponse.redirect(new URL("/cadastros/servicos?status=delete_not_found", request.url), 303);
+    }
+
+    const { data: financialEntry, error: financialEntryError } = await supabase
+      .from("financial_entries")
+      .select("id")
+      .eq("company_id", profile.company_id)
+      .eq("idempotency_key", `service-record:${serviceId}`)
+      .maybeSingle();
+
+    if (financialEntryError) {
+      return NextResponse.redirect(new URL("/cadastros/servicos?status=delete_error", request.url), 303);
+    }
+
+    const block = serviceDeletionBlock(service.status, Boolean(financialEntry));
+
+    if (block === "service_active") {
+      return NextResponse.redirect(new URL("/cadastros/servicos?status=delete_not_stopped", request.url), 303);
+    }
+    if (block === "financial_entry") {
+      return NextResponse.redirect(new URL("/cadastros/servicos?status=delete_financial", request.url), 303);
+    }
+
+    const { error } = await supabase
+      .from("service_records")
+      .delete()
+      .eq("id", serviceId)
+      .eq("company_id", profile.company_id);
+
+    return NextResponse.redirect(
+      new URL(`/cadastros/servicos?status=${error ? "delete_error" : "deleted"}`, request.url),
+      303
+    );
+  }
 
   if (!clientId || !serviceDescription || amount === null || amount < 0) {
     return NextResponse.redirect(new URL("/cadastros/servicos?status=invalid", request.url), 303);

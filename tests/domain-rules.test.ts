@@ -8,6 +8,7 @@ import { nfseIdempotencyKey, validateNfseDraft } from "../src/domains/fiscal/nfs
 import { buildDpsXml, mergeNfseFiscalData } from "../src/lib/integrations/nfse-national.ts";
 import { interChargeIdempotencyKey, validateChargeDraft } from "../src/domains/billing/inter.ts";
 import { assertCannotChangeOwnElevation, can } from "../src/domains/users/permissions.ts";
+import { serviceDeletionBlock } from "../src/domains/services/deletion.ts";
 
 test("valida documentos brasileiros", () => {
   assert.equal(isValidCpf("529.982.247-25"), true);
@@ -119,4 +120,11 @@ test("aplica permissoes por grupo e bloqueia auto-elevacao", () => {
   assert.equal(can({ userId: "u1", role: "master", permissions: [] }, "fiscal:emitir"), true);
   assert.equal(can({ userId: "u1", role: "usuario", permissions: ["financeiro:conciliar"] }, "financeiro:conciliar"), true);
   assert.throws(() => assertCannotChangeOwnElevation("u1", "u1", ["usuarios:configurar"]), /propria permissao/);
+});
+
+test("exclui apenas servico parado e sem lancamento financeiro", () => {
+  assert.equal(serviceDeletionBlock("rascunho", false), null);
+  assert.equal(serviceDeletionBlock("cancelado", false), null);
+  assert.equal(serviceDeletionBlock("em_andamento", false), "service_active");
+  assert.equal(serviceDeletionBlock("cancelado", true), "financial_entry");
 });

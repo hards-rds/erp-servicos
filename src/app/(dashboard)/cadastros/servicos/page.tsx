@@ -1,4 +1,6 @@
 import { PageHeader } from "@/components/layout/page-header";
+import { DeleteServiceButton } from "@/components/services/delete-service-button";
+import { canDeleteServiceStatus } from "@/domains/services/deletion";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type ServicosPageProps = {
@@ -36,7 +38,16 @@ type ClientOption = {
 const statusMessages: Record<string, { kind: "success" | "error"; text: string }> = {
   created: { kind: "success", text: "Servico cadastrado com sucesso." },
   updated: { kind: "success", text: "Servico atualizado com sucesso." },
+  deleted: { kind: "success", text: "Servico excluido com sucesso." },
   invalid: { kind: "error", text: "Revise cliente, descricao e valor antes de salvar." },
+  invalid_delete: { kind: "error", text: "Servico invalido para exclusao." },
+  delete_not_found: { kind: "error", text: "Servico nao encontrado." },
+  delete_not_stopped: { kind: "error", text: "Cancele o servico antes de exclui-lo." },
+  delete_financial: {
+    kind: "error",
+    text: "Este servico possui lancamento financeiro e nao pode ser excluido. Mantenha-o cancelado para preservar o historico."
+  },
+  delete_error: { kind: "error", text: "Nao foi possivel excluir o servico agora." },
   update_error: { kind: "error", text: "Nao foi possivel atualizar o servico agora." },
   error: { kind: "error", text: "Nao foi possivel cadastrar o servico agora." },
   profile_error: { kind: "error", text: "Seu usuario ainda nao esta vinculado a uma empresa." }
@@ -388,9 +399,16 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
                         <td>{getDetailSummary(service) || "-"}</td>
                         <td><span className="badge warning">{service.status}</span></td>
                         <td>
-                          <a className="ghost-button button-link compact-button" href={`#evoluir-${service.id}`}>
-                            Evoluir
-                          </a>
+                          <div className="table-actions">
+                            <a className="ghost-button button-link compact-button" href={`#evoluir-${service.id}`}>
+                              Evoluir
+                            </a>
+                            <form action="/api/cadastros/servicos" method="post">
+                              <input type="hidden" name="action" value="delete" />
+                              <input type="hidden" name="serviceId" value={service.id} />
+                              <DeleteServiceButton disabled={!canDeleteServiceStatus(service.status)} />
+                            </form>
+                          </div>
                         </td>
                       </tr>
                     );
