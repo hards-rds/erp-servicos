@@ -60,6 +60,11 @@ function decimal(value: unknown, precision = 2) {
   return Number.isFinite(number) ? number.toFixed(precision) : (0).toFixed(precision);
 }
 
+function percentage(value: unknown) {
+  const raw = clean(value).replace(",", ".");
+  return raw ? Number(raw) : Number.NaN;
+}
+
 function addressValue(address: Row | null, key: string) {
   const value = address?.[key];
   return typeof value === "string" ? value : "";
@@ -160,7 +165,9 @@ export function buildDpsXml(input: NfseNationalInput) {
   const municipalRegistration = onlyDigits(fiscalValue(emitterFiscalData, "municipalRegistration"));
   const simpleNationalStatus = clean(fiscalValue(emitterFiscalData, "simpleNationalStatus"));
   const simpleNationalAssessmentRegime = clean(fiscalValue(emitterFiscalData, "simpleNationalAssessmentRegime"));
-  const simpleNationalTotalTaxRate = Number(clean(fiscalValue(emitterFiscalData, "simpleNationalTotalTaxRate")).replace(",", "."));
+  const federalTotalTaxRate = percentage(fiscalValue(emitterFiscalData, "federalTotalTaxRate"));
+  const stateTotalTaxRate = percentage(fiscalValue(emitterFiscalData, "stateTotalTaxRate"));
+  const municipalTotalTaxRate = percentage(fiscalValue(emitterFiscalData, "municipalTotalTaxRate"));
   const specialTaxRegime = clean(fiscalValue(emitterFiscalData, "specialTaxRegime")) || "0";
   const number = dpsNumber(`${input.documentId}:${input.entry.id}:${input.entry.competence}`);
   const serieId = series.padStart(5, "0");
@@ -179,7 +186,9 @@ export function buildDpsXml(input: NfseNationalInput) {
     environment,
     simpleNationalStatus,
     simpleNationalAssessmentRegime,
-    simpleNationalTotalTaxRate,
+    federalTotalTaxRate,
+    stateTotalTaxRate,
+    municipalTotalTaxRate,
     xml: `<?xml version="1.0" encoding="UTF-8"?>
 <DPS xmlns="http://www.sped.fazenda.gov.br/nfse" versao="${xml(layoutVersion)}">
   <infDPS Id="${xml(dpsId)}">
@@ -236,9 +245,11 @@ export function buildDpsXml(input: NfseNationalInput) {
           <tpRetISSQN>${fiscalValue(fiscalData, "retainIss") === true ? "2" : "1"}</tpRetISSQN>
         </tribMun>
         <totTrib>
-          ${simpleNationalStatus === "3"
-            ? `<pTotTribSN>${decimal(simpleNationalTotalTaxRate)}</pTotTribSN>`
-            : "<indTotTrib>0</indTotTrib>"}
+          <pTotTrib>
+            <pTotTribFed>${decimal(federalTotalTaxRate)}</pTotTribFed>
+            <pTotTribEst>${decimal(stateTotalTaxRate)}</pTotTribEst>
+            <pTotTribMun>${decimal(municipalTotalTaxRate)}</pTotTribMun>
+          </pTotTrib>
         </totTrib>
       </trib>
     </valores>
@@ -258,8 +269,9 @@ export function validateDpsInput(input: NfseNationalInput) {
   if (dps.simpleNationalStatus === "3" && !["1", "2", "3"].includes(dps.simpleNationalAssessmentRegime)) {
     errors.push("Regime de apuracao do Simples Nacional obrigatorio em Configuracoes Gerais.");
   }
-  if (dps.simpleNationalStatus === "3" && (!Number.isFinite(dps.simpleNationalTotalTaxRate) || dps.simpleNationalTotalTaxRate <= 0 || dps.simpleNationalTotalTaxRate >= 100)) {
-    errors.push("Percentual aproximado dos tributos do Simples Nacional obrigatorio em Configuracoes Gerais.");
+  const taxRates = [dps.federalTotalTaxRate, dps.stateTotalTaxRate, dps.municipalTotalTaxRate];
+  if (taxRates.some((rate) => !Number.isFinite(rate) || rate < 0 || rate >= 100)) {
+    errors.push("Percentuais aproximados dos tributos federal, estadual e municipal obrigatorios em Configuracoes Gerais.");
   }
   if (dps.serviceCode.length !== 6) errors.push("Codigo nacional de servico NFS-e obrigatorio com 6 digitos.");
   if (Number(input.entry.net_amount) <= 0) errors.push("Valor da nota deve ser maior que zero.");

@@ -8,7 +8,7 @@ type GeraisPageProps = {
 const statusMessages: Record<string, { kind: "success" | "error"; text: string }> = {
   saved: { kind: "success", text: "Configuracoes gerais salvas com sucesso." },
   invalid: { kind: "error", text: "Revise o nome da empresa e o segmento de atuacao." },
-  fiscal_invalid: { kind: "error", text: "Revise os dados fiscais do emitente. Municipio, situacao tributaria e regime do Simples devem estar corretos." },
+  fiscal_invalid: { kind: "error", text: "Revise os dados fiscais do emitente, incluindo municipio, regime tributario e percentuais aproximados dos tributos." },
   forbidden: { kind: "error", text: "Apenas usuarios master podem alterar as configuracoes gerais." },
   profile_error: { kind: "error", text: "Seu usuario ainda nao esta vinculado a uma empresa." },
   error: { kind: "error", text: "Nao foi possivel salvar as configuracoes agora." }
@@ -136,16 +136,41 @@ export default async function GeraisPage({ searchParams }: GeraisPageProps) {
                 </select>
               </label>
             </div>
-            <label>
-              Percentual aproximado dos tributos do Simples Nacional (%)
-              <input
-                name="simpleNationalTotalTaxRate"
-                inputMode="decimal"
-                defaultValue={fiscalString(fiscalSettings, "simpleNationalTotalTaxRate")}
-                placeholder="Ex.: 6,00"
-                disabled={!isMaster}
-              />
-            </label>
+            <div className="form-grid">
+              <label>
+                Tributos federais aproximados (%)
+                <input
+                  name="federalTotalTaxRate"
+                  inputMode="decimal"
+                  defaultValue={fiscalString(fiscalSettings, "federalTotalTaxRate", "13.45")}
+                  placeholder="13,45"
+                  required
+                  disabled={!isMaster}
+                />
+              </label>
+              <label>
+                Tributos estaduais aproximados (%)
+                <input
+                  name="stateTotalTaxRate"
+                  inputMode="decimal"
+                  defaultValue={fiscalString(fiscalSettings, "stateTotalTaxRate", "0.00")}
+                  placeholder="0,00"
+                  required
+                  disabled={!isMaster}
+                />
+              </label>
+              <label>
+                Tributos municipais aproximados (%)
+                <input
+                  name="municipalTotalTaxRate"
+                  inputMode="decimal"
+                  defaultValue={fiscalString(fiscalSettings, "municipalTotalTaxRate", "3.05")}
+                  placeholder="3,05"
+                  required
+                  disabled={!isMaster}
+                />
+              </label>
+            </div>
           </fieldset>
           <button className="primary-button" type="submit" disabled={!isMaster}>Salvar</button>
         </form>

@@ -11,6 +11,11 @@ function readString(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
 }
 
+function readPercentage(formData: FormData, key: string) {
+  const raw = readString(formData, key).replace(",", ".");
+  return raw ? Number(raw) : Number.NaN;
+}
+
 export async function POST(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -44,7 +49,9 @@ export async function POST(request: NextRequest) {
   const series = readString(formData, "dpsSeries") || "1";
   const simpleNationalStatus = readString(formData, "simpleNationalStatus");
   const simpleNationalAssessmentRegime = readString(formData, "simpleNationalAssessmentRegime");
-  const simpleNationalTotalTaxRate = Number(readString(formData, "simpleNationalTotalTaxRate").replace(",", "."));
+  const federalTotalTaxRate = readPercentage(formData, "federalTotalTaxRate");
+  const stateTotalTaxRate = readPercentage(formData, "stateTotalTaxRate");
+  const municipalTotalTaxRate = readPercentage(formData, "municipalTotalTaxRate");
   const specialTaxRegime = readString(formData, "specialTaxRegime") || "0";
 
   if (!name || !segments.has(serviceSegment)) {
@@ -56,7 +63,8 @@ export async function POST(request: NextRequest) {
     || !simpleNationalStatuses.has(simpleNationalStatus)
     || !specialTaxRegimes.has(specialTaxRegime)
     || (simpleNationalStatus === "3" && !assessmentRegimes.has(simpleNationalAssessmentRegime))
-    || (simpleNationalStatus === "3" && (!Number.isFinite(simpleNationalTotalTaxRate) || simpleNationalTotalTaxRate <= 0 || simpleNationalTotalTaxRate >= 100))
+    || [federalTotalTaxRate, stateTotalTaxRate, municipalTotalTaxRate]
+      .some((rate) => !Number.isFinite(rate) || rate < 0 || rate >= 100)
   ) {
     return NextResponse.redirect(new URL("/configuracoes/gerais?status=fiscal_invalid", request.url), 303);
   }
@@ -74,7 +82,9 @@ export async function POST(request: NextRequest) {
         series,
         simpleNationalStatus,
         simpleNationalAssessmentRegime: simpleNationalStatus === "3" ? simpleNationalAssessmentRegime : "",
-        simpleNationalTotalTaxRate: simpleNationalStatus === "3" ? simpleNationalTotalTaxRate.toFixed(2) : "",
+        federalTotalTaxRate: federalTotalTaxRate.toFixed(2),
+        stateTotalTaxRate: stateTotalTaxRate.toFixed(2),
+        municipalTotalTaxRate: municipalTotalTaxRate.toFixed(2),
         specialTaxRegime
       },
       updated_at: new Date().toISOString()
