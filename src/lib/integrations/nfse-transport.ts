@@ -62,9 +62,11 @@ function parseResponseBody(body: string): unknown {
   }
 }
 
-export function nfseHttpErrorMessage(statusCode: number) {
+type NfseOperation = "emitir" | "cancelar";
+
+export function nfseHttpErrorMessage(statusCode: number, operation: NfseOperation = "emitir") {
   if ([502, 503, 504].includes(statusCode)) {
-    return `A SEFIN Nacional esta temporariamente indisponivel (HTTP ${statusCode}). Tente emitir novamente em alguns minutos.`;
+    return `A SEFIN Nacional esta temporariamente indisponivel (HTTP ${statusCode}). Tente ${operation} novamente em alguns minutos.`;
   }
   return `A SEFIN Nacional recusou a comunicacao (HTTP ${statusCode}). Tente novamente ou consulte a disponibilidade do servico.`;
 }
@@ -78,7 +80,7 @@ export function transmitDps(options: {
   const target = new URL(`${options.endpoint.replace(/\/$/, "")}/nfse`);
   const body = JSON.stringify({ dpsXmlGZipB64: encodeDpsXml(options.signedXml) });
 
-  return postNfseJson(target, body, options.certificate, options.timeoutMs);
+  return postNfseJson(target, body, options.certificate, "emitir", options.timeoutMs);
 }
 
 export function transmitCancellation(options: {
@@ -91,10 +93,16 @@ export function transmitCancellation(options: {
   const target = new URL(`${options.endpoint.replace(/\/$/, "")}/nfse/${encodeURIComponent(options.accessKey)}/eventos`);
   const body = JSON.stringify({ pedidoRegistroEventoXmlGZipB64: encodeDpsXml(options.signedXml) });
 
-  return postNfseJson(target, body, options.certificate, options.timeoutMs);
+  return postNfseJson(target, body, options.certificate, "cancelar", options.timeoutMs);
 }
 
-function postNfseJson(target: URL, body: string, certificate: NfseRuntimeCertificate, timeoutMs?: number) {
+function postNfseJson(
+  target: URL,
+  body: string,
+  certificate: NfseRuntimeCertificate,
+  operation: NfseOperation,
+  timeoutMs?: number
+) {
   return new Promise<unknown>((resolve, reject) => {
     const req = https.request({
       protocol: target.protocol,
@@ -128,7 +136,7 @@ function postNfseJson(target: URL, body: string, certificate: NfseRuntimeCertifi
         const statusCode = response.statusCode || 500;
 
         if (statusCode < 200 || statusCode >= 300) {
-          const error = new Error(nfseHttpErrorMessage(statusCode)) as Error & { payload?: unknown };
+          const error = new Error(nfseHttpErrorMessage(statusCode, operation)) as Error & { payload?: unknown };
           try {
             const payload = parseResponseBody(rawBody);
             if (payload && typeof payload === "object" && !Array.isArray(payload)) {

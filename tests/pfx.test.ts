@@ -121,4 +121,7 @@ test("traduz indisponibilidade HTTP da SEFIN sem expor HTML", () => {
   assert.match(message, /temporariamente indisponivel/);
   assert.match(message, /HTTP 503/);
   assert.doesNotMatch(message, /DOCTYPE|Service Unavailable/);
+
+  const cancellationMessage = nfseHttpErrorMessage(503, "cancelar");
+  assert.match(cancellationMessage, /Tente cancelar novamente/);
 });
