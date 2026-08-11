@@ -12,6 +12,7 @@ import {
   decodeNfseXml,
   encodeDpsXml,
   nfseHttpErrorMessage,
+  signCancellationXml,
   signDpsXml
 } from "../src/lib/integrations/nfse-transport.ts";
 
@@ -86,6 +87,27 @@ test("assina a DPS com RSA-SHA256 e compacta em GZip Base64", () => {
   assert.match(signedXml, /<X509Certificate>/);
   assert.equal(decodeNfseXml(encodeDpsXml(signedXml)), signedXml);
 
+  const verifier = new SignedXml({ publicCert: materials.certificatePem });
+  const document = new DOMParser().parseFromString(signedXml);
+  const signature = verifier.findSignatures(document)[0];
+  assert.ok(signature);
+  verifier.loadSignature(signature);
+  assert.equal(verifier.checkSignature(signedXml), true);
+});
+
+test("assina o pedido de cancelamento no elemento infPedReg", () => {
+  const password = "senha-evento";
+  const pfx = createTestPfx(password);
+  const materials = extractPfxSigningMaterials(pfx, password);
+  const xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><pedRegEvento xmlns=\"http://www.sped.fazenda.gov.br/nfse\" versao=\"1.01\"><infPedReg Id=\"PRE123\"><tpAmb>2</tpAmb></infPedReg></pedRegEvento>";
+  const signedXml = signCancellationXml(xml, {
+    pfx,
+    password,
+    certificatePem: materials.certificatePem,
+    privateKeyPem: materials.privateKeyPem
+  });
+
+  assert.match(signedXml, /<Reference URI="#PRE123">/);
   const verifier = new SignedXml({ publicCert: materials.certificatePem });
   const document = new DOMParser().parseFromString(signedXml);
   const signature = verifier.findSignatures(document)[0];

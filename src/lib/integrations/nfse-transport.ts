@@ -16,6 +16,14 @@ export type NfseRuntimeCertificate = {
 };
 
 export function signDpsXml(xml: string, certificate: NfseRuntimeCertificate) {
+  return signXmlElement(xml, certificate, "infDPS");
+}
+
+export function signCancellationXml(xml: string, certificate: NfseRuntimeCertificate) {
+  return signXmlElement(xml, certificate, "infPedReg");
+}
+
+function signXmlElement(xml: string, certificate: NfseRuntimeCertificate, elementName: string) {
   const signer = new SignedXml({
     privateKey: certificate.privateKeyPem,
     publicCert: certificate.certificatePem,
@@ -24,13 +32,13 @@ export function signDpsXml(xml: string, certificate: NfseRuntimeCertificate) {
   });
 
   signer.addReference({
-    xpath: "//*[local-name(.)='infDPS']",
+    xpath: `//*[local-name(.)='${elementName}']`,
     digestAlgorithm: SHA256,
     transforms: [ENVELOPED, C14N]
   });
   signer.computeSignature(xml, {
     location: {
-      reference: "//*[local-name(.)='infDPS']",
+      reference: `//*[local-name(.)='${elementName}']`,
       action: "after"
     }
   });
@@ -70,6 +78,23 @@ export function transmitDps(options: {
   const target = new URL(`${options.endpoint.replace(/\/$/, "")}/nfse`);
   const body = JSON.stringify({ dpsXmlGZipB64: encodeDpsXml(options.signedXml) });
 
+  return postNfseJson(target, body, options.certificate, options.timeoutMs);
+}
+
+export function transmitCancellation(options: {
+  endpoint: string;
+  accessKey: string;
+  signedXml: string;
+  certificate: NfseRuntimeCertificate;
+  timeoutMs?: number;
+}) {
+  const target = new URL(`${options.endpoint.replace(/\/$/, "")}/nfse/${encodeURIComponent(options.accessKey)}/eventos`);
+  const body = JSON.stringify({ pedidoRegistroEventoXmlGZipB64: encodeDpsXml(options.signedXml) });
+
+  return postNfseJson(target, body, options.certificate, options.timeoutMs);
+}
+
+function postNfseJson(target: URL, body: string, certificate: NfseRuntimeCertificate, timeoutMs?: number) {
   return new Promise<unknown>((resolve, reject) => {
     const req = https.request({
       protocol: target.protocol,
@@ -77,8 +102,8 @@ export function transmitDps(options: {
       port: target.port || undefined,
       path: `${target.pathname}${target.search}`,
       method: "POST",
-      pfx: options.certificate.pfx,
-      passphrase: options.certificate.password,
+      pfx: certificate.pfx,
+      passphrase: certificate.password,
       minVersion: "TLSv1.2",
       rejectUnauthorized: true,
       headers: {
@@ -106,7 +131,7 @@ export function transmitDps(options: {
           const error = new Error(nfseHttpErrorMessage(statusCode)) as Error & { payload?: unknown };
           try {
             const payload = parseResponseBody(rawBody);
-            if (payload && typeof payload === "object" && !Array.isArray(payload) && "erros" in payload) {
+            if (payload && typeof payload === "object" && !Array.isArray(payload)) {
               error.payload = payload;
             }
           } catch {
@@ -124,7 +149,7 @@ export function transmitDps(options: {
       });
     });
 
-    req.setTimeout(options.timeoutMs ?? 45000, () => {
+    req.setTimeout(timeoutMs ?? 45000, () => {
       req.destroy(new Error("Tempo limite excedido ao transmitir a DPS para a SEFIN."));
     });
     req.on("error", reject);

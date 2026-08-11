@@ -25,7 +25,7 @@ export type NfseNationalInput = {
 
 export type NfseProviderResult = {
   ok: boolean;
-  status: "autorizada" | "enfileirada" | "rejeitada" | "erro_integracao";
+  status: "autorizada" | "enfileirada" | "rejeitada" | "cancelada" | "erro_integracao";
   provider: string;
   message: string;
   protocol?: string;

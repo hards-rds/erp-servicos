@@ -176,6 +176,54 @@ textarea {
   padding: 0 10px;
 }
 
+.button-with-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.action-dialog {
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+.action-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.78);
+}
+
+.dialog-header,
+.dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dialog-header {
+  margin-bottom: 18px;
+}
+
+.dialog-header h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.dialog-actions {
+  justify-content: flex-end;
+}
+
+.dialog-actions button {
+  min-height: 40px;
+  padding: 0 14px;
+}
+
 .table-actions {
   display: flex;
   align-items: center;

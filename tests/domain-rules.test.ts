@@ -6,6 +6,11 @@ import { generateRecurringEntry } from "../src/domains/contracts/recurrence.ts";
 import { summarizeCashflow, assertPayableCanBeMarkedPaid } from "../src/domains/finance/cashflow.ts";
 import { nfseIdempotencyKey, validateNfseDraft } from "../src/domains/fiscal/nfse.ts";
 import { buildDpsXml, interpretNfseResponse, mergeNfseFiscalData } from "../src/lib/integrations/nfse-national.ts";
+import {
+  buildCancellationXml,
+  interpretCancellationResponse,
+  validateCancellationInput
+} from "../src/lib/integrations/nfse-cancellation.ts";
 import { interChargeIdempotencyKey, validateChargeDraft } from "../src/domains/billing/inter.ts";
 import { assertCannotChangeOwnElevation, can } from "../src/domains/users/permissions.ts";
 import { serviceDeletionBlock } from "../src/domains/services/deletion.ts";
@@ -134,6 +139,43 @@ test("preserva a rejeicao detalhada devolvida pela SEFIN", () => {
   assert.equal(result.ok, false);
   assert.equal(result.status, "rejeitada");
   assert.equal(result.message, "E1200 - Certificado de transmissao invalido");
+});
+
+test("monta e interpreta cancelamento de NFS-e Nacional", () => {
+  const input = {
+    accessKey: "31702062204252011000110000000000001234567890123456",
+    companyDocument: "04.252.011/0001-10",
+    reasonCode: "1" as const,
+    reason: "Erro no valor informado & corrigido."
+  };
+  const cancellation = buildCancellationXml(input);
+
+  assert.equal(cancellation.id, `PRE${input.accessKey}101101`);
+  assert.match(cancellation.xml, /<infPedReg Id="PRE\d{56}">/);
+  assert.match(cancellation.xml, /<e101101>[\s\S]*<cMotivo>1<\/cMotivo>/);
+  assert.match(cancellation.xml, /Erro no valor informado &amp; corrigido\./);
+  assert.deepEqual(validateCancellationInput(input).errors, []);
+
+  const result = interpretCancellationResponse({ eventoXmlGZipB64: "H4sIAAAA" });
+  assert.equal(result.ok, true);
+  assert.equal(result.status, "cancelada");
+
+  const rejected = interpretCancellationResponse({
+    erro: { codigo: "E1101", descricao: "Prazo de cancelamento expirado" }
+  });
+  assert.equal(rejected.ok, false);
+  assert.match(rejected.message, /E1101/);
+});
+
+test("rejeita justificativa de cancelamento curta", () => {
+  const result = validateCancellationInput({
+    accessKey: "31702062204252011000110000000000001234567890123456",
+    companyDocument: "04.252.011/0001-10",
+    reasonCode: "9",
+    reason: "Muito curta"
+  });
+
+  assert.match(result.errors.join(" "), /15 e 255/);
 });
 
 test("valida cobranca Inter e idempotencia", () => {
