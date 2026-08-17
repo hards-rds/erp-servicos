@@ -338,9 +338,11 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
     data: { user }
   } = await supabase.auth.getUser();
   const { data: profile } = user
-    ? await supabase.from("profiles").select("company_id,companies(service_segment)").eq("id", user.id).maybeSingle()
+    ? await supabase.from("profiles").select("company_id").eq("id", user.id).maybeSingle()
     : { data: null };
-  const company = Array.isArray(profile?.companies) ? profile?.companies[0] : profile?.companies;
+  const { data: company } = profile?.company_id
+    ? await supabase.from("companies").select("service_segment").eq("id", profile.company_id).maybeSingle()
+    : { data: null };
   const segment = ((company?.service_segment || "tecnologia") as ServiceSegment);
   const typeOptions = serviceTypeOptions[segment] || serviceTypeOptions.tecnologia;
   const { data: clients } = await supabase

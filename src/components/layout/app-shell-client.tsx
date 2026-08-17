@@ -80,10 +80,26 @@ type AppShellClientProps = {
   displayName: string;
   displayEmail: string;
   displayRole: string;
+  activeCompanyName?: string | null;
+  activeCompanySegment?: string | null;
   isSystemAdmin?: boolean;
 };
 
-export function AppShellClient({ children, displayName, displayEmail, displayRole, isSystemAdmin = false }: AppShellClientProps) {
+const segmentLabels: Record<string, string> = {
+  tecnologia: "Tecnologia",
+  otica: "Otica",
+  generico: "Generico"
+};
+
+export function AppShellClient({
+  children,
+  displayName,
+  displayEmail,
+  displayRole,
+  activeCompanyName,
+  activeCompanySegment,
+  isSystemAdmin = false
+}: AppShellClientProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -214,7 +230,11 @@ export function AppShellClient({ children, displayName, displayEmail, displayRol
             </button>
             <div>
               <strong>Operacao</strong>
-              <div className="muted">Financeiro, fiscal e cobrancas em ambiente seguro</div>
+              <div className="muted">
+                {activeCompanyName
+                  ? `${activeCompanyName} · ${segmentLabels[activeCompanySegment || ""] || activeCompanySegment || "segmento nao definido"}`
+                  : "Financeiro, fiscal e cobrancas em ambiente seguro"}
+              </div>
             </div>
           </div>
           <div className="topbar-actions">

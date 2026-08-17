@@ -8,17 +8,25 @@ type TenantRow = {
   slug: string;
   plan: string;
   status: string;
-  companies: { id: string; name: string; document: string | null; active: boolean }[] | null;
+  companies: { id: string; name: string; document: string | null; service_segment: string | null; active: boolean }[] | null;
   tenant_members: { user_id: string }[] | null;
 };
 
 const messages: Record<string, { type: "success" | "error"; text: string }> = {
   created: { type: "success", text: "Tenant criado com empresa e usuario master." },
+  switched: { type: "success", text: "Ambiente ativo alterado. Agora o sistema usa os dados dessa empresa." },
   invalid: { type: "error", text: "Preencha tenant, empresa, master e uma senha com pelo menos 8 caracteres." },
   duplicate_user: { type: "error", text: "Ja existe um usuario com esse e-mail." },
   group_error: { type: "error", text: "Tenant criado, mas houve falha ao gerar grupos padrao." },
+  missing_company: { type: "error", text: "Selecione uma empresa valida para trocar o ambiente." },
   forbidden: { type: "error", text: "Apenas system_admin pode administrar tenants." },
   error: { type: "error", text: "Nao foi possivel criar o tenant agora." }
+};
+
+const segmentLabels: Record<string, string> = {
+  tecnologia: "Tecnologia",
+  otica: "Otica",
+  generico: "Generico"
 };
 
 function documentText(value: string | null) {
@@ -45,7 +53,7 @@ export default async function TenantsPage({
   const { data: tenants } = isSystemAdmin
     ? await supabase
       .from("tenants")
-      .select("id,name,slug,plan,status,companies(id,name,document,active),tenant_members(user_id)")
+      .select("id,name,slug,plan,status,companies(id,name,document,service_segment,active),tenant_members(user_id)")
       .order("created_at", { ascending: false })
     : { data: [] };
   const allTenants = (tenants || []) as TenantRow[];
@@ -135,7 +143,9 @@ export default async function TenantsPage({
                     <th>Plano</th>
                     <th>Status</th>
                     <th>Empresas</th>
+                    <th>Segmento</th>
                     <th>Usuarios</th>
+                    <th>Acoes</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -150,11 +160,29 @@ export default async function TenantsPage({
                           ? (tenant.companies || []).map((company) => `${company.name} (${documentText(company.document)})`).join(", ")
                           : "-"}
                       </td>
+                      <td>
+                        {(tenant.companies || []).length
+                          ? (tenant.companies || []).map((company) => segmentLabels[company.service_segment || ""] || company.service_segment || "-").join(", ")
+                          : "-"}
+                      </td>
                       <td>{tenant.tenant_members?.length || 0}</td>
+                      <td>
+                        {(tenant.companies || []).length ? (
+                          <div className="table-actions">
+                            {(tenant.companies || []).map((company) => (
+                              <form action="/api/admin/switch-company" method="post" key={company.id}>
+                                <input type="hidden" name="companyId" value={company.id} />
+                                <input type="hidden" name="redirectTo" value="/dashboard" />
+                                <button className="ghost-button" type="submit">Usar ambiente</button>
+                              </form>
+                            ))}
+                          </div>
+                        ) : "-"}
+                      </td>
                     </tr>
                   )) : (
                     <tr>
-                      <td colSpan={6}>Nenhum tenant cadastrado.</td>
+                      <td colSpan={8}>Nenhum tenant cadastrado.</td>
                     </tr>
                   )}
                 </tbody>
