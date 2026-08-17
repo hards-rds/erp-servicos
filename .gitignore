@@ -19,3 +19,4 @@ backup*.dump
 .swp
 *.swp
 .vercel
+.env*

@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.redirect(new URL("/configuracoes/gerais?status=profile_error", request.url), 303);
   }
 
-  if (profile.role !== "master" || profile.active === false) {
+  if (!["master", "system_admin"].includes(profile.role) || profile.active === false) {
     return NextResponse.redirect(new URL("/configuracoes/gerais?status=forbidden", request.url), 303);
   }
 

@@ -82,7 +82,7 @@ export default async function UsuariosPage({
     : { data: null };
   const role = profile?.role || "usuario";
   const active = profile?.active !== false;
-  const isMaster = role === "master" && active;
+  const isMaster = ["master", "system_admin"].includes(role) && active;
   const { data: profiles } = await supabase
     .from("profiles")
     .select("id,name,email,role,active,user_groups(groups(id,name))")

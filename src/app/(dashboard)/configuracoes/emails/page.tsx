@@ -1,6 +1,27 @@
 import { PageHeader } from "@/components/layout/page-header";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-export default function EmailsPage() {
+type EmailsPageProps = {
+  searchParams?: Promise<{ status?: string }>;
+};
+
+const statusMessages: Record<string, { kind: "success" | "error"; text: string }> = {
+  saved: { kind: "success", text: "Configuracao de email salva." },
+  invalid: { kind: "error", text: "Informe um remetente e um provedor valido." },
+  error: { kind: "error", text: "Nao foi possivel salvar a configuracao." },
+  forbidden: { kind: "error", text: "Apenas usuarios master podem configurar emails." },
+  profile_error: { kind: "error", text: "Seu usuario nao esta ativo ou vinculado a uma empresa." }
+};
+
+export default async function EmailsPage({ searchParams }: EmailsPageProps) {
+  const params = await searchParams;
+  const supabase = await createServerSupabaseClient();
+  const { data: settings } = await supabase
+    .from("email_settings")
+    .select("provider,email_from,reply_to")
+    .maybeSingle();
+  const message = params?.status ? statusMessages[params.status] : null;
+
   return (
     <>
       <PageHeader
@@ -8,13 +29,30 @@ export default function EmailsPage() {
         title="E-mails"
         description="Remetentes, templates, destinatarios padrao e historico de envio."
       />
+      {message ? (
+        <div className={message.kind === "success" ? "form-success" : "form-error"}>
+          {message.text}
+        </div>
+      ) : null}
       <section className="form-panel">
         <h2>Configuracao</h2>
-        <form className="form-stack">
-          <label>Remetente<input placeholder="financeiro@empresa.com" /></label>
-          <label>Responder para<input placeholder="atendimento@empresa.com" /></label>
-          <label>Template financeiro<textarea /></label>
-          <button className="primary-button" type="button">Salvar</button>
+        <form className="form-stack" action="/api/configuracoes/emails" method="post">
+          <label>
+            Provedor
+            <select name="provider" defaultValue={settings?.provider || process.env.EMAIL_PROVIDER || "resend"}>
+              <option value="resend">Resend</option>
+              <option value="sendgrid">SendGrid</option>
+            </select>
+          </label>
+          <label>
+            Remetente
+            <input name="emailFrom" defaultValue={settings?.email_from || process.env.EMAIL_FROM || ""} placeholder="financeiro@empresa.com" />
+          </label>
+          <label>
+            Responder para
+            <input name="replyTo" defaultValue={settings?.reply_to || process.env.EMAIL_REPLY_TO || ""} placeholder="atendimento@empresa.com" />
+          </label>
+          <button className="primary-button" type="submit">Salvar</button>
         </form>
       </section>
     </>

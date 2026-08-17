@@ -5,11 +5,12 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type NfseRow = {
   id: string;
+  danfse_file_id: string | null;
   external_id: string | null;
   competence: string;
   service_amount: number | string;
   status: string;
-  clients: { legal_name: string } | { legal_name: string }[] | null;
+  clients: { legal_name: string; fiscal_email: string | null } | { legal_name: string; fiscal_email: string | null }[] | null;
 };
 
 function formatMoney(value: number | string) {
@@ -35,6 +36,10 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   cancelled: { kind: "success", text: "NFS-e cancelada com sucesso." },
   cancel_rejected: { kind: "error", text: "A SEFIN rejeitou o cancelamento da NFS-e." },
   cancel_error: { kind: "error", text: "Nao foi possivel cancelar a NFS-e agora." },
+  pdf_generated: { kind: "success", text: "DANFSe gerado e anexado a nota." },
+  pdf_error: { kind: "error", text: "Nao foi possivel gerar o DANFSe." },
+  email_sent: { kind: "success", text: "DANFSe enviado para o email fiscal do cliente." },
+  email_error: { kind: "error", text: "Nao foi possivel enviar o DANFSe por email." },
   invalid: { kind: "error", text: "Documento fiscal invalido." },
   not_found: { kind: "error", text: "Documento fiscal nao encontrado." },
   forbidden: { kind: "error", text: "Seu usuario nao possui permissao para cancelar NFS-e." },
@@ -50,7 +55,7 @@ export default async function NotasEmitidasPage({ searchParams }: NotasEmitidasP
   });
   const { data: documents } = await supabase
     .from("nfse_documents")
-    .select("id,external_id,competence,service_amount,status,clients(legal_name)")
+    .select("id,danfse_file_id,external_id,competence,service_amount,status,clients(legal_name,fiscal_email)")
     .order("created_at", { ascending: false })
     .limit(100);
   const allDocuments = (documents || []) as NfseRow[];
@@ -96,6 +101,24 @@ export default async function NotasEmitidasPage({ searchParams }: NotasEmitidasP
                     <td><StatusBadge tone={getTone(document.status)}>{document.status}</StatusBadge></td>
                     <td>
                       <div className="table-actions">
+                        {["autorizada", "cancelada"].includes(document.status) ? (
+                          <>
+                            {document.danfse_file_id ? (
+                              <a className="ghost-button compact-button button-link" href={`/api/fiscal/nfse/danfse?id=${document.id}`}>
+                                Baixar PDF
+                              </a>
+                            ) : (
+                              <form action="/api/fiscal/nfse/danfse" method="post">
+                                <input type="hidden" name="nfseDocumentId" value={document.id} />
+                                <button className="ghost-button compact-button" type="submit">Gerar PDF</button>
+                              </form>
+                            )}
+                            <form action="/api/fiscal/nfse/enviar-email" method="post">
+                              <input type="hidden" name="nfseDocumentId" value={document.id} />
+                              <button className="ghost-button compact-button" type="submit">Enviar email</button>
+                            </form>
+                          </>
+                        ) : null}
                         {document.status === "autorizada" && canCancel ? (
                           <NfseCancelForm documentId={document.id} enabled={cancellationEnabled} />
                         ) : null}

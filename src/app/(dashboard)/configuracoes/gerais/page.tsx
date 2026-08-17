@@ -31,7 +31,7 @@ export default async function GeraisPage({ searchParams }: GeraisPageProps) {
   const { data: company } = profile?.company_id
     ? await supabase.from("companies").select("name,document,service_segment,fiscal_settings").eq("id", profile.company_id).maybeSingle()
     : { data: null };
-  const isMaster = profile?.role === "master" && profile.active !== false;
+  const isMaster = ["master", "system_admin"].includes(profile?.role || "") && profile?.active !== false;
   const message = params?.status ? statusMessages[params.status] : null;
   const fiscalSettings = company?.fiscal_settings as Record<string, unknown> | null | undefined;
   const fiscalEnvironment = process.env.NFSE_ENV === "production" ? "production" : "homologation";

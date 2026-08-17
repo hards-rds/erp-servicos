@@ -45,7 +45,7 @@ export default async function CertificadoDigitalPage({ searchParams }: Certifica
         .limit(1)
         .maybeSingle()
     : { data: null };
-  const isMaster = profile?.role === "master" && profile.active !== false;
+  const isMaster = ["master", "system_admin"].includes(profile?.role || "") && profile?.active !== false;
   const message = params?.status ? statusMessages[params.status] : null;
 
   return (

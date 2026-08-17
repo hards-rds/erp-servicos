@@ -5,6 +5,10 @@ export type ChargeDraft = {
   dueDate: string;
   amountCents: number;
   payerDocument: string;
+  payerName?: string;
+  payerEmail?: string;
+  description?: string;
+  seuNumero?: string;
 };
 
 export function interChargeIdempotencyKey(draft: Pick<ChargeDraft, "entryId" | "dueDate">): string {
@@ -17,5 +21,8 @@ export function validateChargeDraft(draft: ChargeDraft): string[] {
   if (!draft.dueDate) errors.push("Vencimento obrigatorio.");
   if (draft.amountCents <= 0) errors.push("Valor da cobranca deve ser maior que zero.");
   if (!draft.payerDocument) errors.push("Documento do pagador obrigatorio.");
+  if (process.env.INTER_ENV === "production" && !draft.payerName) {
+    errors.push("Nome do pagador obrigatorio para cobranca real no Banco Inter.");
+  }
   return errors;
 }

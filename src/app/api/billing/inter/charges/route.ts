@@ -1,11 +1,16 @@
 import { createInterCharge } from "@/lib/integrations/inter-client";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const authorization = request.headers.get("authorization") || "";
-  if (!authorization.startsWith("Bearer ")) {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
     return NextResponse.json({ error: "Usuario nao autenticado." }, { status: 401 });
   }
 

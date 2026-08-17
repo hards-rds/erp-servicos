@@ -9,6 +9,7 @@ import {
   Banknote,
   Barcode,
   Building2,
+  Building,
   ChartNoAxesCombined,
   ChevronLeft,
   ChevronRight,
@@ -79,12 +80,22 @@ type AppShellClientProps = {
   displayName: string;
   displayEmail: string;
   displayRole: string;
+  isSystemAdmin?: boolean;
 };
 
-export function AppShellClient({ children, displayName, displayEmail, displayRole }: AppShellClientProps) {
+export function AppShellClient({ children, displayName, displayEmail, displayRole, isSystemAdmin = false }: AppShellClientProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const visibleNav = isSystemAdmin
+    ? [
+      {
+        title: "Admin",
+        items: [{ href: "/admin/tenants", label: "Tenants", icon: Building }]
+      },
+      ...nav
+    ]
+    : nav;
 
   useEffect(() => {
     setCollapsed(window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true");
@@ -154,7 +165,7 @@ export function AppShellClient({ children, displayName, displayEmail, displayRol
         </div>
 
         <div className="sidebar-nav">
-          {nav.map((group) => (
+          {visibleNav.map((group) => (
             <nav className="nav-group" key={group.title} aria-label={group.title}>
               <strong className="nav-group-title">{group.title}</strong>
               {group.items.map((item) => {

@@ -25,7 +25,7 @@ async function getMasterActor() {
     .eq("id", user.id)
     .maybeSingle();
 
-  if (!actor?.company_id || actor.role !== "master" || actor.active === false) {
+  if (!actor?.company_id || !["master", "system_admin"].includes(actor.role) || actor.active === false) {
     return { actor: null, error: "forbidden" };
   }
 

@@ -21,11 +21,11 @@ async function getMasterActor() {
 
   const { data: actor } = await supabase
     .from("profiles")
-    .select("id,company_id,role,active")
+    .select("id,tenant_id,company_id,role,active")
     .eq("id", user.id)
     .maybeSingle();
 
-  if (!actor?.company_id || actor.role !== "master" || actor.active === false) {
+  if (!actor?.company_id || !actor.tenant_id || !["master", "system_admin"].includes(actor.role) || actor.active === false) {
     return { actor: null, error: "forbidden" };
   }
 
@@ -80,6 +80,7 @@ export async function POST(request: NextRequest) {
 
     const { error: profileError } = await service.from("profiles").upsert({
       id: created.user.id,
+      tenant_id: actor.tenant_id,
       company_id: actor.company_id,
       email,
       name,
@@ -89,6 +90,24 @@ export async function POST(request: NextRequest) {
     });
 
     if (profileError) return redirectWith(request, "error");
+
+    if (actor.tenant_id) {
+      await service.from("tenant_members").upsert({
+        tenant_id: actor.tenant_id,
+        user_id: created.user.id,
+        role: role === "master" ? "owner" : role === "admin" ? "admin" : "member",
+        active: true,
+        updated_at: new Date().toISOString()
+      });
+    }
+
+    await service.from("company_members").upsert({
+      company_id: actor.company_id,
+      user_id: created.user.id,
+      role: role === "master" ? "owner" : role === "admin" ? "admin" : "member",
+      active: true,
+      updated_at: new Date().toISOString()
+    });
 
     const groupError = await replaceUserGroups(service, created.user.id, groupIds);
     return redirectWith(request, groupError ? "group_error" : "created");
@@ -105,6 +124,18 @@ export async function POST(request: NextRequest) {
       .update({ active, updated_at: new Date().toISOString() })
       .eq("id", userId)
       .eq("company_id", actor.company_id);
+
+    await service
+      .from("tenant_members")
+      .update({ active, updated_at: new Date().toISOString() })
+      .eq("tenant_id", actor.tenant_id)
+      .eq("user_id", userId);
+
+    await service
+      .from("company_members")
+      .update({ active, updated_at: new Date().toISOString() })
+      .eq("company_id", actor.company_id)
+      .eq("user_id", userId);
 
     return redirectWith(request, error ? "error" : active ? "activated" : "deactivated");
   }
@@ -123,6 +154,22 @@ export async function POST(request: NextRequest) {
       .eq("company_id", actor.company_id);
 
     if (profileError) return redirectWith(request, "error");
+
+    await service.from("tenant_members").upsert({
+      tenant_id: actor.tenant_id,
+      user_id: userId,
+      role: role === "master" ? "owner" : role === "admin" ? "admin" : "member",
+      active: true,
+      updated_at: new Date().toISOString()
+    });
+
+    await service.from("company_members").upsert({
+      company_id: actor.company_id,
+      user_id: userId,
+      role: role === "master" ? "owner" : role === "admin" ? "admin" : "member",
+      active: true,
+      updated_at: new Date().toISOString()
+    });
 
     const groupError = await replaceUserGroups(service, userId, groupIds);
     return redirectWith(request, groupError ? "group_error" : "updated");

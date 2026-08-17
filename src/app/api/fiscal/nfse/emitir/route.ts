@@ -2,6 +2,8 @@ import { requestNfseEmission, requestNfseNationalEmission } from "@/lib/integrat
 import { mergeNfseFiscalData } from "@/lib/integrations/nfse-national";
 import { loadRuntimeCertificate } from "@/lib/certificates/runtime-certificate";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { generateAndAttachDanfsePdf } from "@/lib/fiscal/danfse";
+import { logFiscalEmail, sendFiscalDocumentEmail } from "@/lib/email/fiscal-email";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -112,6 +114,44 @@ export async function POST(request: NextRequest) {
       payload: result.responsePayload || result.requestPayload || {},
       created_by: profile.id
     });
+
+    if (result.ok) {
+      try {
+        const generated = await generateAndAttachDanfsePdf(document.id, profile.id);
+        const recipient = client.fiscal_email || "";
+        const subject = `NFS-e ${result.externalId || document.id.slice(0, 8)} - Mundo Livre tecnologia`;
+        const emailResult = await sendFiscalDocumentEmail({
+          companyId: profile.company_id,
+          to: recipient,
+          subject,
+          html: `
+            <p>Ola, ${client.legal_name}.</p>
+            <p>Segue em anexo o DANFSe referente a competencia ${document.competence}.</p>
+            <p>Atenciosamente,<br/>Mundo Livre tecnologia</p>
+          `,
+          attachments: [{
+            filename: generated.fileName,
+            content: generated.content,
+            contentType: "application/pdf"
+          }]
+        });
+        await logFiscalEmail({
+          companyId: profile.company_id,
+          recipient: recipient || "-",
+          subject,
+          result: emailResult,
+          metadata: { nfseDocumentId: document.id, automatic: true }
+        });
+      } catch (postProcessError) {
+        await supabase.from("nfse_events").insert({
+          nfse_document_id: document.id,
+          status: "pos_emissao_pendente",
+          message: postProcessError instanceof Error ? postProcessError.message : "Nao foi possivel gerar/enviar DANFSe automaticamente.",
+          payload: { automatic: true },
+          created_by: profile.id
+        });
+      }
+    }
 
     return redirectWithMessage(request, result.ok ? "processed" : "rejected", result.message);
   } catch (error) {

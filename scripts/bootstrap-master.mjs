@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const MASTER_EMAIL = "lucas@mundolivre.com.br";
 const MASTER_NAME = "Lucas Rocha";
+const TENANT_NAME = "Mundo Livre";
 const COMPANY_NAME = "Mundo Livre tecnologia";
 const COMPANY_DOCUMENT = "";
 
@@ -80,7 +81,10 @@ async function main() {
     ["group_permissions"],
     ["groups"],
     ["profiles"],
-    ["companies"]
+    ["companies"],
+    ["tenant_members"],
+    ["company_members"],
+    ["tenants"]
   ];
   for (const [table, column] of businessTables) {
     await deleteFrom(supabase, table, column);
@@ -107,9 +111,16 @@ async function main() {
     masterUserId = data.user.id;
   }
 
+  const { data: tenant, error: tenantError } = await supabase
+    .from("tenants")
+    .insert({ name: TENANT_NAME, slug: "mundo-livre", plan: "enterprise", status: "active" })
+    .select("id")
+    .single();
+  if (tenantError) throw tenantError;
+
   const { data: company, error: companyError } = await supabase
     .from("companies")
-    .insert({ name: COMPANY_NAME, document: COMPANY_DOCUMENT, active: true })
+    .insert({ tenant_id: tenant.id, name: COMPANY_NAME, document: COMPANY_DOCUMENT, active: true })
     .select("id")
     .single();
   if (companyError) throw companyError;
@@ -121,14 +132,31 @@ async function main() {
 
   const { error: profileError } = await supabase.from("profiles").upsert({
     id: masterUserId,
+    tenant_id: tenant.id,
     company_id: company.id,
     email: MASTER_EMAIL,
     name: MASTER_NAME,
-    role: "master",
+    role: "system_admin",
     active: true,
     updated_at: new Date().toISOString()
   });
   if (profileError) throw profileError;
+
+  await supabase.from("tenant_members").upsert({
+    tenant_id: tenant.id,
+    user_id: masterUserId,
+    role: "system_admin",
+    active: true,
+    updated_at: new Date().toISOString()
+  });
+
+  await supabase.from("company_members").upsert({
+    company_id: company.id,
+    user_id: masterUserId,
+    role: "owner",
+    active: true,
+    updated_at: new Date().toISOString()
+  });
 
   const { data: masterGroup, error: groupError } = await supabase
     .from("groups")
