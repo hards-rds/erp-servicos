@@ -34,10 +34,6 @@ export default async function DashboardPage() {
     .neq("status", "cancelado")
     .order("due_date", { ascending: true })
     .limit(50);
-  const { count: activeContracts } = await supabase
-    .from("contracts")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "ativo");
   const { count: pendingNotes } = await supabase
     .from("nfse_documents")
     .select("id", { count: "exact", head: true })
@@ -53,12 +49,11 @@ export default async function DashboardPage() {
       <PageHeader
         area="Dashboard"
         title="Visao operacional"
-        description="Resumo financeiro, fiscal e de contratos recorrentes."
+        description="Resumo financeiro e fiscal da operacao."
       />
-      <section className="metrics">
+      <section className="metrics dashboard-metrics">
         <MetricCard label="Recebivel previsto" value={formatMoney(expected)} detail={`${openEntries.length} em aberto`} />
         <MetricCard label="Recebido" value={formatMoney(received)} detail={`${realizedPercent}% realizado`} />
-        <MetricCard label="Contratos ativos" value={String(activeContracts || 0)} detail="recorrencia" />
         <MetricCard label="Notas com pendencia" value={String(pendingNotes || 0)} detail="fila fiscal" />
       </section>
       <section className="table-panel">

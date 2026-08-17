@@ -652,6 +652,10 @@ summary:focus-visible {
   gap: 14px;
 }
 
+.dashboard-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .card,
 .table-panel,
 .form-panel {
