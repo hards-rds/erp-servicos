@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/layout/page-header";
+import { ReceiveEntryForm } from "@/components/finance/receive-entry-form";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -47,44 +48,6 @@ function getTone(status: string) {
 
 function canReceive(entry: EntryRow) {
   return !["recebido", "conciliado", "cancelado"].includes(entry.status);
-}
-
-function ReceiveForm({ entry }: { entry: EntryRow }) {
-  const today = new Date().toISOString().slice(0, 10);
-  return (
-    <details className="inline-details">
-      <summary className="ghost-button compact-button">Dar baixa</summary>
-      <form className="inline-payment-form" action="/api/financeiro/entradas" method="post">
-        <input type="hidden" name="action" value="receive" />
-        <input type="hidden" name="entryId" value={entry.id} />
-        <label>
-          Data
-          <input name="receivedAt" type="date" defaultValue={today} required />
-        </label>
-        <label>
-          Valor recebido
-          <input name="receivedAmount" inputMode="decimal" defaultValue={Number(entry.net_amount).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} required />
-        </label>
-        <label>
-          Forma
-          <select name="paymentMethod" defaultValue="pix" required>
-            <option value="pix">Pix</option>
-            <option value="cartao_credito">Cartao de credito</option>
-            <option value="cartao_debito">Cartao de debito</option>
-            <option value="dinheiro">Dinheiro</option>
-            <option value="boleto">Boleto</option>
-            <option value="transferencia">Transferencia</option>
-            <option value="outro">Outro</option>
-          </select>
-        </label>
-        <label>
-          Observacao
-          <input name="paymentNotes" placeholder="Autorizacao, parcela ou observacao" />
-        </label>
-        <button className="primary-button compact-button" type="submit">Confirmar baixa</button>
-      </form>
-    </details>
-  );
 }
 
 export default async function EntradasPage({ searchParams }: EntradasPageProps) {
@@ -141,7 +104,15 @@ export default async function EntradasPage({ searchParams }: EntradasPageProps) 
                       ) : "-"}
                     </td>
                     <td><StatusBadge tone={getTone(entry.status)}>{entry.status}</StatusBadge></td>
-                    <td>{canReceive(entry) ? <ReceiveForm entry={entry} /> : "-"}</td>
+                    <td>
+                      {canReceive(entry) ? (
+                        <ReceiveEntryForm
+                          entryId={entry.id}
+                          description={entry.description}
+                          amount={entry.net_amount}
+                        />
+                      ) : "-"}
+                    </td>
                   </tr>
                 ))
               ) : (
