@@ -7,9 +7,23 @@ type EntryRow = {
   description: string;
   competence: string;
   due_date: string;
+  received_at: string | null;
+  received_amount: number | string | null;
   net_amount: number | string;
+  payment_method: string | null;
   status: string;
   clients: { legal_name: string } | { legal_name: string }[] | null;
+};
+
+type EntradasPageProps = {
+  searchParams?: Promise<{ status?: string }>;
+};
+
+const statusMessages: Record<string, { kind: "success" | "error"; text: string }> = {
+  received: { kind: "success", text: "Baixa registrada e entrada marcada como recebida." },
+  invalid: { kind: "error", text: "Revise lancamento, valor e forma de pagamento." },
+  receive_error: { kind: "error", text: "Nao foi possivel registrar a baixa agora." },
+  profile_error: { kind: "error", text: "Seu usuario ainda nao esta vinculado a uma empresa." }
 };
 
 function formatMoney(value: number | string) {
@@ -31,11 +45,55 @@ function getTone(status: string) {
   return "neutral" as const;
 }
 
-export default async function EntradasPage() {
+function canReceive(entry: EntryRow) {
+  return !["recebido", "conciliado", "cancelado"].includes(entry.status);
+}
+
+function ReceiveForm({ entry }: { entry: EntryRow }) {
+  const today = new Date().toISOString().slice(0, 10);
+  return (
+    <details className="inline-details">
+      <summary className="ghost-button compact-button">Dar baixa</summary>
+      <form className="inline-payment-form" action="/api/financeiro/entradas" method="post">
+        <input type="hidden" name="action" value="receive" />
+        <input type="hidden" name="entryId" value={entry.id} />
+        <label>
+          Data
+          <input name="receivedAt" type="date" defaultValue={today} required />
+        </label>
+        <label>
+          Valor recebido
+          <input name="receivedAmount" inputMode="decimal" defaultValue={Number(entry.net_amount).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} required />
+        </label>
+        <label>
+          Forma
+          <select name="paymentMethod" defaultValue="pix" required>
+            <option value="pix">Pix</option>
+            <option value="cartao_credito">Cartao de credito</option>
+            <option value="cartao_debito">Cartao de debito</option>
+            <option value="dinheiro">Dinheiro</option>
+            <option value="boleto">Boleto</option>
+            <option value="transferencia">Transferencia</option>
+            <option value="outro">Outro</option>
+          </select>
+        </label>
+        <label>
+          Observacao
+          <input name="paymentNotes" placeholder="Autorizacao, parcela ou observacao" />
+        </label>
+        <button className="primary-button compact-button" type="submit">Confirmar baixa</button>
+      </form>
+    </details>
+  );
+}
+
+export default async function EntradasPage({ searchParams }: EntradasPageProps) {
+  const params = await searchParams;
+  const message = params?.status ? statusMessages[params.status] : null;
   const supabase = await createServerSupabaseClient();
   const { data: entries } = await supabase
     .from("financial_entries")
-    .select("id,description,competence,due_date,net_amount,status,clients(legal_name)")
+    .select("id,description,competence,due_date,received_at,received_amount,net_amount,payment_method,status,clients(legal_name)")
     .order("due_date", { ascending: false })
     .limit(100);
   const allEntries = (entries || []) as EntryRow[];
@@ -48,6 +106,7 @@ export default async function EntradasPage() {
         description="Contas a receber recorrentes, manuais, avulsas, boletos e notas fiscais."
         action={<a className="primary-button button-link" href="/cadastros/servicos">Novo servico</a>}
       />
+      {message ? <div className={message.kind === "success" ? "form-success" : "form-error"}>{message.text}</div> : null}
       <section className="table-panel">
         <h2>Lancamentos</h2>
         <div className="table-wrap">
@@ -59,7 +118,9 @@ export default async function EntradasPage() {
                 <th>Competencia</th>
                 <th>Vencimento</th>
                 <th>Valor liquido</th>
+                <th>Recebimento</th>
                 <th>Status</th>
+                <th>Acoes</th>
               </tr>
             </thead>
             <tbody>
@@ -71,12 +132,21 @@ export default async function EntradasPage() {
                     <td>{entry.competence}</td>
                     <td>{formatDate(entry.due_date)}</td>
                     <td>{formatMoney(entry.net_amount)}</td>
+                    <td>
+                      {entry.received_at ? (
+                        <>
+                          <strong>{formatMoney(entry.received_amount || entry.net_amount)}</strong>
+                          <div className="muted">{formatDate(entry.received_at)} · {entry.payment_method || "-"}</div>
+                        </>
+                      ) : "-"}
+                    </td>
                     <td><StatusBadge tone={getTone(entry.status)}>{entry.status}</StatusBadge></td>
+                    <td>{canReceive(entry) ? <ReceiveForm entry={entry} /> : "-"}</td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6}>Nenhuma entrada financeira cadastrada.</td>
+                  <td colSpan={8}>Nenhuma entrada financeira cadastrada.</td>
                 </tr>
               )}
             </tbody>
