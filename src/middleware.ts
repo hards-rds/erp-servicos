@@ -49,6 +49,7 @@ export const config = {
     "/operacao/:path*",
     "/financeiro/:path*",
     "/fiscal/:path*",
+    "/relatorios/:path*",
     "/configuracoes/:path*"
   ]
 };

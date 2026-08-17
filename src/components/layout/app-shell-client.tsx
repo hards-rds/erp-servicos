@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import {
   BadgeCheck,
   Banknote,
+  BarChart3,
   Barcode,
   Building2,
   Building,
@@ -70,6 +71,10 @@ const nav = [
       { href: "/fiscal/emissao-nfse", label: "Emissao de NFS-e", icon: FilePlus2 },
       { href: "/fiscal/notas-emitidas", label: "Notas Emitidas", icon: ReceiptText }
     ]
+  },
+  {
+    title: "Analises",
+    items: [{ href: "/relatorios", label: "Relatorios", icon: BarChart3 }]
   },
   {
     title: "Configuracoes",
