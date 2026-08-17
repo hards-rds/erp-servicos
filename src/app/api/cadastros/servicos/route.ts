@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceDeletionBlock } from "@/domains/services/deletion";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
 
 function readString(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
@@ -53,6 +53,55 @@ function collectSegmentDetails(formData: FormData, segment: string) {
   }
 
   return { segment };
+}
+
+async function getActiveContext(input: {
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>;
+  userId: string;
+}) {
+  const { data: profile } = await input.supabase
+    .from("profiles")
+    .select("id,company_id")
+    .eq("id", input.userId)
+    .maybeSingle();
+
+  if (!profile?.id) return null;
+
+  let companyId = profile.company_id as string | null;
+
+  if (!companyId) {
+    const service = createServiceClient();
+    const { data: membership } = await service
+      .from("company_members")
+      .select("company_id")
+      .eq("user_id", profile.id)
+      .eq("active", true)
+      .limit(1)
+      .maybeSingle();
+
+    companyId = membership?.company_id || null;
+
+    if (companyId) {
+      await service
+        .from("profiles")
+        .update({ company_id: companyId, updated_at: new Date().toISOString() })
+        .eq("id", profile.id);
+    }
+  }
+
+  if (!companyId) return { profileId: profile.id, companyId: null, segment: "tecnologia" };
+
+  const { data: company } = await input.supabase
+    .from("companies")
+    .select("service_segment")
+    .eq("id", companyId)
+    .maybeSingle();
+
+  return {
+    profileId: profile.id,
+    companyId,
+    segment: company?.service_segment || "tecnologia"
+  };
 }
 
 async function syncReceivableFromService(input: {
@@ -122,20 +171,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url), 303);
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id,company_id,companies(service_segment)")
-    .eq("id", user.id)
-    .maybeSingle();
+  const context = await getActiveContext({ supabase, userId: user.id });
 
-  if (!profile?.company_id) {
+  if (!context?.companyId) {
     return NextResponse.redirect(new URL("/cadastros/servicos?status=profile_error", request.url), 303);
   }
 
   const formData = await request.formData();
   const action = readString(formData, "action") || "create";
-  const company = Array.isArray(profile.companies) ? profile.companies[0] : profile.companies;
-  const segment = company?.service_segment || "tecnologia";
+  const segment = context.segment;
   const serviceId = readString(formData, "serviceId");
   const clientId = readString(formData, "clientId");
   const serviceDescription = readString(formData, "serviceDescription");
@@ -150,7 +194,7 @@ export async function POST(request: NextRequest) {
       .from("service_records")
       .select("id,status")
       .eq("id", serviceId)
-      .eq("company_id", profile.company_id)
+      .eq("company_id", context.companyId)
       .maybeSingle();
 
     if (!service) {
@@ -160,7 +204,7 @@ export async function POST(request: NextRequest) {
     const { data: financialEntry, error: financialEntryError } = await supabase
       .from("financial_entries")
       .select("id")
-      .eq("company_id", profile.company_id)
+      .eq("company_id", context.companyId)
       .eq("idempotency_key", `service-record:${serviceId}`)
       .maybeSingle();
 
@@ -181,7 +225,7 @@ export async function POST(request: NextRequest) {
       .from("service_records")
       .delete()
       .eq("id", serviceId)
-      .eq("company_id", profile.company_id);
+      .eq("company_id", context.companyId);
 
     return NextResponse.redirect(
       new URL(`/cadastros/servicos?status=${error ? "delete_error" : "deleted"}`, request.url),
@@ -203,7 +247,7 @@ export async function POST(request: NextRequest) {
     status: readString(formData, "status") || "rascunho",
     fiscal_service_data: collectSegmentDetails(formData, segment),
     notes: readString(formData, "notes") || null,
-    updated_by: profile.id,
+    updated_by: context.profileId,
     updated_at: new Date().toISOString()
   };
 
@@ -216,14 +260,14 @@ export async function POST(request: NextRequest) {
       .from("service_records")
       .update(payload)
       .eq("id", serviceId)
-      .eq("company_id", profile.company_id);
+      .eq("company_id", context.companyId);
 
     if (!error) {
       await syncReceivableFromService({
         supabase,
-        companyId: profile.company_id,
+        companyId: context.companyId,
         serviceId,
-        profileId: profile.id,
+        profileId: context.profileId,
         payload
       });
     }
@@ -233,16 +277,16 @@ export async function POST(request: NextRequest) {
 
   const { data: createdService, error } = await supabase.from("service_records").insert({
     ...payload,
-    company_id: profile.company_id,
-    created_by: profile.id
+    company_id: context.companyId,
+    created_by: context.profileId
   }).select("id").single();
 
   if (!error && createdService?.id) {
     await syncReceivableFromService({
       supabase,
-      companyId: profile.company_id,
+      companyId: context.companyId,
       serviceId: createdService.id,
-      profileId: profile.id,
+      profileId: context.profileId,
       payload
     });
   }
