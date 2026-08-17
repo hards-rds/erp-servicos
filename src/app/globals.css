@@ -279,6 +279,19 @@ textarea {
   white-space: normal;
 }
 
+.embedded-section {
+  display: grid;
+  gap: 16px;
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.embedded-section h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
 .icon-button {
   width: 40px;
   display: inline-grid;
