@@ -20,10 +20,12 @@ import {
   LogOut,
   Mail,
   Menu,
+  Package,
   Plug,
   ReceiptText,
   Settings,
   ShieldCheck,
+  ShoppingCart,
   UserRoundCog,
   Users,
   WalletCards,
@@ -42,7 +44,14 @@ const nav = [
     items: [
       { href: "/cadastros/clientes", label: "Clientes", icon: Building2 },
       { href: "/cadastros/servicos", label: "Servicos", icon: ClipboardList },
-      { href: "/cadastros/contratos", label: "Contratos", icon: FileText }
+      { href: "/cadastros/contratos", label: "Contratos", icon: FileText, hiddenForSegments: ["otica"] }
+    ]
+  },
+  {
+    title: "Operacao",
+    items: [
+      { href: "/operacao/vendas", label: "Vendas", icon: ShoppingCart },
+      { href: "/operacao/estoque", label: "Estoque", icon: Package }
     ]
   },
   {
@@ -103,15 +112,21 @@ export function AppShellClient({
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const segmentNav = nav
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !item.hiddenForSegments?.includes(activeCompanySegment || ""))
+    }))
+    .filter((group) => group.items.length);
   const visibleNav = isSystemAdmin
     ? [
       {
         title: "Admin",
         items: [{ href: "/admin/tenants", label: "Tenants", icon: Building }]
       },
-      ...nav
+      ...segmentNav
     ]
-    : nav;
+    : segmentNav;
 
   useEffect(() => {
     setCollapsed(window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true");

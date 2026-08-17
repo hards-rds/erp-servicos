@@ -69,6 +69,35 @@ function getClientName(contract: ContractRow) {
 export default async function ContratosPage({ searchParams }: ContratosPageProps) {
   const params = await searchParams;
   const supabase = await createServerSupabaseClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  const { data: profile } = user
+    ? await supabase.from("profiles").select("company_id").eq("id", user.id).maybeSingle()
+    : { data: null };
+  const { data: company } = profile?.company_id
+    ? await supabase.from("companies").select("service_segment").eq("id", profile.company_id).maybeSingle()
+    : { data: null };
+
+  if (company?.service_segment === "otica") {
+    return (
+      <>
+        <PageHeader
+          area="Cadastros / Contratos"
+          title="Contratos indisponiveis"
+          description="Para oticas, o fluxo principal fica em vendas, estoque, clientes e servicos pontuais."
+          action={<a className="primary-button button-link" href="/operacao/vendas">Ir para vendas</a>}
+        />
+        <section className="form-panel">
+          <h2>Modulo oculto para oticas</h2>
+          <p className="muted">
+            Este ambiente esta configurado como otica, entao contratos recorrentes foram removidos da operacao diaria.
+          </p>
+        </section>
+      </>
+    );
+  }
+
   const { data: clients } = await supabase
     .from("clients")
     .select("id,legal_name")
