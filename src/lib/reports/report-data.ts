@@ -31,6 +31,11 @@ function searchRows<T>(rows: T[], search: string, values: (row: T) => Array<unkn
   return rows.filter((row) => values(row).join(" ").toLocaleLowerCase("pt-BR").includes(needle));
 }
 
+function dateInRange(value: string | null | undefined, filters: ReportFilters) {
+  const date = value?.slice(0, 10);
+  return Boolean(date && date >= filters.from && date <= filters.to);
+}
+
 async function getReportContext() {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -191,61 +196,121 @@ async function payablesReport(filters: ReportFilters): Promise<ReportResult> {
     amount: number | string;
     payment_method: string | null;
     status: string;
+    created_at: string;
   };
 
   const { supabase, companyId } = await getReportContext();
   let payablesQuery = supabase
     .from("payables")
-    .select("id,vendor_name,category,description,competence,due_date,paid_at,amount,payment_method,status")
+    .select("id,vendor_name,category,description,competence,due_date,paid_at,amount,payment_method,status,created_at")
     .eq("company_id", companyId)
-    .gte("due_date", filters.from)
-    .lte("due_date", filters.to)
-    .order("due_date", { ascending: false })
-    .limit(2000);
+    .order("created_at", { ascending: false })
+    .limit(5000);
   if (filters.status) payablesQuery = payablesQuery.eq("status", filters.status);
 
   const commissionsQuery = !filters.status || filters.status === "previsto"
     ? supabase
         .from("commissions")
-        .select("id,description,reference_date,due_date,commission_amount,status,payable_id,seller:commission_sellers!commissions_commission_seller_id_fkey(name,email)")
+        .select("id,description,reference_date,due_date,commission_amount,status,payable_id,created_at,seller:commission_sellers!commissions_commission_seller_id_fkey(name,email)")
         .eq("company_id", companyId)
         .eq("status", "pendente")
         .is("payable_id", null)
-        .gte("due_date", filters.from)
-        .lte("due_date", filters.to)
-        .order("due_date", { ascending: false })
-        .limit(2000)
+        .order("created_at", { ascending: false })
+        .limit(5000)
     : null;
 
-  const [payablesResult, commissionsResult] = await Promise.all([
+  const bankTransactionsQuery = !filters.status || ["pago", "conciliado"].includes(filters.status)
+    ? supabase
+        .from("bank_transactions")
+        .select("id,transaction_date,description,amount,created_at,bank_accounts(bank_name)")
+        .eq("company_id", companyId)
+        .lt("amount", 0)
+        .gte("transaction_date", filters.from)
+        .lte("transaction_date", filters.to)
+        .order("transaction_date", { ascending: false })
+        .limit(5000)
+    : null;
+
+  const reconciliationsQuery = bankTransactionsQuery
+    ? supabase
+        .from("bank_reconciliations")
+        .select("bank_transaction_id,payable_id")
+        .eq("company_id", companyId)
+        .limit(5000)
+    : null;
+
+  const [payablesResult, commissionsResult, bankTransactionsResult, reconciliationsResult] = await Promise.all([
     payablesQuery,
-    commissionsQuery ?? Promise.resolve({ data: [], error: null })
+    commissionsQuery ?? Promise.resolve({ data: [], error: null }),
+    bankTransactionsQuery ?? Promise.resolve({ data: [], error: null }),
+    reconciliationsQuery ?? Promise.resolve({ data: [], error: null })
   ]);
   if (payablesResult.error) throw payablesResult.error;
   if (commissionsResult.error) throw commissionsResult.error;
+  if (bankTransactionsResult.error) throw bankTransactionsResult.error;
+  if (reconciliationsResult.error) throw reconciliationsResult.error;
 
-  const payableRows = ((payablesResult.data || []) as Omit<Row, "origin">[]).map((row) => ({
-    ...row,
-    origin: "Conta a pagar"
-  }));
-  const commissionRows = (commissionsResult.data || []).map((commission) => {
-    const seller = Array.isArray(commission.seller) ? commission.seller[0] : commission.seller;
-    return {
-      id: commission.id,
-      origin: "Comissao pendente",
-      vendor_name: seller?.name || seller?.email || "Vendedor",
-      category: "Comissoes",
-      description: commission.description,
-      competence: commission.reference_date.slice(0, 7),
-      due_date: commission.due_date,
-      paid_at: null,
-      amount: commission.commission_amount,
-      payment_method: null,
-      status: "previsto"
-    } satisfies Row;
+  const payableRows = ((payablesResult.data || []) as Omit<Row, "origin">[])
+    .filter((row) => dateInRange(row.created_at, filters) || dateInRange(row.due_date, filters) || dateInRange(row.paid_at, filters))
+    .map((row) => ({
+      ...row,
+      origin: row.category === "Comissoes" ? "Comissao aprovada" : "Conta a pagar"
+    }));
+  const commissionRows = (commissionsResult.data || [])
+    .filter((commission) => (
+      dateInRange(commission.created_at, filters)
+      || dateInRange(commission.reference_date, filters)
+      || dateInRange(commission.due_date, filters)
+    ))
+    .map((commission) => {
+      const seller = Array.isArray(commission.seller) ? commission.seller[0] : commission.seller;
+      return {
+        id: commission.id,
+        origin: "Comissao pendente",
+        vendor_name: seller?.name || seller?.email || "Vendedor",
+        category: "Comissoes",
+        description: commission.description,
+        competence: commission.reference_date.slice(0, 7),
+        due_date: commission.due_date,
+        paid_at: null,
+        amount: commission.commission_amount,
+        payment_method: null,
+        status: "previsto",
+        created_at: commission.created_at
+      } satisfies Row;
+    });
+
+  const reconciliations = new Map<string, Array<{ payable_id: string | null }>>();
+  for (const reconciliation of reconciliationsResult.data || []) {
+    const current = reconciliations.get(reconciliation.bank_transaction_id) || [];
+    current.push({ payable_id: reconciliation.payable_id });
+    reconciliations.set(reconciliation.bank_transaction_id, current);
+  }
+  const bankRows = (bankTransactionsResult.data || []).flatMap((transaction) => {
+    const transactionReconciliations = reconciliations.get(transaction.id) || [];
+    if (transactionReconciliations.some((reconciliation) => reconciliation.payable_id)) return [];
+    const status = transactionReconciliations.length ? "conciliado" : "pago";
+    if (filters.status && filters.status !== status) return [];
+    const account = Array.isArray(transaction.bank_accounts)
+      ? transaction.bank_accounts[0]
+      : transaction.bank_accounts;
+    return [{
+      id: transaction.id,
+      origin: "Transacao bancaria",
+      vendor_name: account?.bank_name || "Conta bancaria",
+      category: "Movimentacao bancaria",
+      description: transaction.description || "Debito bancario",
+      competence: transaction.transaction_date.slice(0, 7),
+      due_date: transaction.transaction_date,
+      paid_at: transaction.transaction_date,
+      amount: Math.abs(Number(transaction.amount)),
+      payment_method: "Conta bancaria",
+      status,
+      created_at: transaction.created_at
+    } satisfies Row];
   });
   const rows = searchRows(
-    [...payableRows, ...commissionRows].sort((a, b) => b.due_date.localeCompare(a.due_date)),
+    [...payableRows, ...commissionRows, ...bankRows].sort((a, b) => b.due_date.localeCompare(a.due_date)),
     filters.search,
     (row) => [row.origin, row.vendor_name, row.category, row.description, row.competence, row.payment_method, row.status]
   );
@@ -256,9 +321,9 @@ async function payablesReport(filters: ReportFilters): Promise<ReportResult> {
   const overdue = open.filter((row) => row.status === "vencido" || row.due_date < today);
 
   return {
-    title: "Contas a pagar",
-    description: "Despesas por fornecedor, categoria, vencimento e pagamento.",
-    dateFieldLabel: "Vencimento",
+    title: "Saidas consolidadas",
+    description: "Contas a pagar, comissoes e debitos bancarios sem duplicidade.",
+    dateFieldLabel: "Cadastro, vencimento ou pagamento",
     metrics: [
       { label: "Total previsto", value: formatMoney(valid.reduce((sum, row) => sum + Number(row.amount), 0)), detail: `${valid.length} despesas` },
       { label: "Total pago", value: formatMoney(paid.reduce((sum, row) => sum + Number(row.amount), 0)), detail: `${paid.length} pagamentos` },
@@ -266,6 +331,7 @@ async function payablesReport(filters: ReportFilters): Promise<ReportResult> {
       { label: "Vencidos", value: formatMoney(overdue.reduce((sum, row) => sum + Number(row.amount), 0)), detail: `${overdue.length} despesas` }
     ],
     columns: [
+      { key: "recordedAt", label: "Cadastro" },
       { key: "dueDate", label: "Vencimento" },
       { key: "origin", label: "Origem" },
       { key: "vendor", label: "Fornecedor" },
@@ -278,6 +344,7 @@ async function payablesReport(filters: ReportFilters): Promise<ReportResult> {
       { key: "status", label: "Status" }
     ],
     rows: rows.map((row) => ({
+      recordedAt: formatDate(row.created_at),
       dueDate: formatDate(row.due_date),
       origin: row.origin,
       vendor: row.vendor_name,
