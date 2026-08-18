@@ -103,13 +103,14 @@ export const reportStatuses: Record<ReportKey, Array<{ value: string; label: str
 export function parseReportFilters(input: Record<string, string | undefined>): ReportFilters {
   const today = new Date();
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+  const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
   const iso = (date: Date) => date.toISOString().slice(0, 10);
   const report = REPORT_KEYS.includes(input.report as ReportKey) ? input.report as ReportKey : "financeiro";
 
   return {
     report,
     from: /^\d{4}-\d{2}-\d{2}$/.test(input.from || "") ? input.from! : iso(firstDay),
-    to: /^\d{4}-\d{2}-\d{2}$/.test(input.to || "") ? input.to! : iso(today),
+    to: /^\d{4}-\d{2}-\d{2}$/.test(input.to || "") ? input.to! : iso(lastDay),
     status: String(input.status || "").trim(),
     search: String(input.search || "").trim().slice(0, 100)
   };

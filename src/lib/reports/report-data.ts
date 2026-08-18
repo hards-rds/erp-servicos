@@ -181,6 +181,7 @@ async function salesReport(filters: ReportFilters): Promise<ReportResult> {
 async function payablesReport(filters: ReportFilters): Promise<ReportResult> {
   type Row = {
     id: string;
+    origin: string;
     vendor_name: string;
     category: string;
     description: string;
@@ -193,7 +194,7 @@ async function payablesReport(filters: ReportFilters): Promise<ReportResult> {
   };
 
   const { supabase, companyId } = await getReportContext();
-  let query = supabase
+  let payablesQuery = supabase
     .from("payables")
     .select("id,vendor_name,category,description,competence,due_date,paid_at,amount,payment_method,status")
     .eq("company_id", companyId)
@@ -201,10 +202,53 @@ async function payablesReport(filters: ReportFilters): Promise<ReportResult> {
     .lte("due_date", filters.to)
     .order("due_date", { ascending: false })
     .limit(2000);
-  if (filters.status) query = query.eq("status", filters.status);
-  const { data, error } = await query;
-  if (error) throw error;
-  const rows = searchRows((data || []) as Row[], filters.search, (row) => [row.vendor_name, row.category, row.description, row.competence, row.payment_method, row.status]);
+  if (filters.status) payablesQuery = payablesQuery.eq("status", filters.status);
+
+  const commissionsQuery = !filters.status || filters.status === "previsto"
+    ? supabase
+        .from("commissions")
+        .select("id,description,reference_date,due_date,commission_amount,status,payable_id,seller:commission_sellers!commissions_commission_seller_id_fkey(name,email)")
+        .eq("company_id", companyId)
+        .eq("status", "pendente")
+        .is("payable_id", null)
+        .gte("due_date", filters.from)
+        .lte("due_date", filters.to)
+        .order("due_date", { ascending: false })
+        .limit(2000)
+    : null;
+
+  const [payablesResult, commissionsResult] = await Promise.all([
+    payablesQuery,
+    commissionsQuery ?? Promise.resolve({ data: [], error: null })
+  ]);
+  if (payablesResult.error) throw payablesResult.error;
+  if (commissionsResult.error) throw commissionsResult.error;
+
+  const payableRows = ((payablesResult.data || []) as Omit<Row, "origin">[]).map((row) => ({
+    ...row,
+    origin: "Conta a pagar"
+  }));
+  const commissionRows = (commissionsResult.data || []).map((commission) => {
+    const seller = Array.isArray(commission.seller) ? commission.seller[0] : commission.seller;
+    return {
+      id: commission.id,
+      origin: "Comissao pendente",
+      vendor_name: seller?.name || seller?.email || "Vendedor",
+      category: "Comissoes",
+      description: commission.description,
+      competence: commission.reference_date.slice(0, 7),
+      due_date: commission.due_date,
+      paid_at: null,
+      amount: commission.commission_amount,
+      payment_method: null,
+      status: "previsto"
+    } satisfies Row;
+  });
+  const rows = searchRows(
+    [...payableRows, ...commissionRows].sort((a, b) => b.due_date.localeCompare(a.due_date)),
+    filters.search,
+    (row) => [row.origin, row.vendor_name, row.category, row.description, row.competence, row.payment_method, row.status]
+  );
   const valid = rows.filter((row) => row.status !== "cancelado");
   const paid = rows.filter((row) => ["pago", "conciliado"].includes(row.status));
   const open = rows.filter((row) => !["pago", "conciliado", "cancelado"].includes(row.status));
@@ -223,6 +267,7 @@ async function payablesReport(filters: ReportFilters): Promise<ReportResult> {
     ],
     columns: [
       { key: "dueDate", label: "Vencimento" },
+      { key: "origin", label: "Origem" },
       { key: "vendor", label: "Fornecedor" },
       { key: "category", label: "Categoria" },
       { key: "description", label: "Descricao" },
@@ -234,6 +279,7 @@ async function payablesReport(filters: ReportFilters): Promise<ReportResult> {
     ],
     rows: rows.map((row) => ({
       dueDate: formatDate(row.due_date),
+      origin: row.origin,
       vendor: row.vendor_name,
       category: row.category,
       description: row.description,
