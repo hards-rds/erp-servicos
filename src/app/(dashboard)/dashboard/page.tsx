@@ -7,8 +7,14 @@ type FinancialEntryRow = {
   description: string;
   due_date: string;
   net_amount: number | string;
+  received_amount: number | string | null;
   status: string;
   clients: { legal_name: string } | { legal_name: string }[] | null;
+};
+
+type PayableRow = {
+  amount: number | string;
+  status: string;
 };
 
 function formatMoney(value: number) {
@@ -28,21 +34,53 @@ function getClientName(entry: FinancialEntryRow) {
 
 export default async function DashboardPage() {
   const supabase = await createServerSupabaseClient();
-  const { data: entries } = await supabase
-    .from("financial_entries")
-    .select("id,description,due_date,net_amount,status,clients(legal_name)")
-    .neq("status", "cancelado")
-    .order("due_date", { ascending: true })
-    .limit(50);
-  const { count: pendingNotes } = await supabase
-    .from("nfse_documents")
-    .select("id", { count: "exact", head: true })
-    .in("status", ["rascunho", "validada", "enfileirada", "rejeitada", "erro_integracao"]);
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data: profile } = user
+    ? await supabase.from("profiles").select("company_id").eq("id", user.id).maybeSingle()
+    : { data: null };
+
+  let entries: FinancialEntryRow[] = [];
+  let payables: PayableRow[] = [];
+  let pendingNotes = 0;
+  if (profile?.company_id) {
+    const [entriesResult, payablesResult, notesResult] = await Promise.all([
+      supabase
+        .from("financial_entries")
+        .select("id,description,due_date,net_amount,received_amount,status,clients(legal_name)")
+        .eq("company_id", profile.company_id)
+        .neq("status", "cancelado")
+        .order("due_date", { ascending: true }),
+      supabase
+        .from("payables")
+        .select("amount,status")
+        .eq("company_id", profile.company_id)
+        .neq("status", "cancelado"),
+      supabase
+        .from("nfse_documents")
+        .select("id", { count: "exact", head: true })
+        .eq("company_id", profile.company_id)
+        .in("status", ["rascunho", "validada", "enfileirada", "rejeitada", "erro_integracao"])
+    ]);
+    entries = (entriesResult.data || []) as FinancialEntryRow[];
+    payables = (payablesResult.data || []) as PayableRow[];
+    pendingNotes = notesResult.count || 0;
+  }
+
   const financialEntries = (entries || []) as FinancialEntryRow[];
   const expected = sumEntries(financialEntries);
-  const received = sumEntries(financialEntries, ["recebido", "conciliado"]);
+  const receivedEntries = financialEntries.filter((entry) => ["recebido", "conciliado"].includes(entry.status));
+  const received = receivedEntries.reduce(
+    (total, entry) => total + Number(entry.received_amount || entry.net_amount || 0),
+    0
+  );
   const openEntries = financialEntries.filter((entry) => ["previsto", "emitido", "aguardando_pagamento", "vencido"].includes(entry.status));
+  const expectedExpenses = payables.reduce((total, payable) => total + Number(payable.amount || 0), 0);
+  const paidPayables = payables.filter((payable) => ["pago", "conciliado"].includes(payable.status));
+  const paidExpenses = paidPayables.reduce((total, payable) => total + Number(payable.amount || 0), 0);
+  const openPayables = payables.filter((payable) => !["pago", "conciliado"].includes(payable.status));
   const realizedPercent = expected > 0 ? Math.round((received / expected) * 100) : 0;
+  const paidPercent = expectedExpenses > 0 ? Math.round((paidExpenses / expectedExpenses) * 100) : 0;
+  const projectedBalance = expected - expectedExpenses;
 
   return (
     <>
@@ -54,7 +92,10 @@ export default async function DashboardPage() {
       <section className="metrics dashboard-metrics">
         <MetricCard label="Recebivel previsto" value={formatMoney(expected)} detail={`${openEntries.length} em aberto`} />
         <MetricCard label="Recebido" value={formatMoney(received)} detail={`${realizedPercent}% realizado`} />
-        <MetricCard label="Notas com pendencia" value={String(pendingNotes || 0)} detail="fila fiscal" />
+        <MetricCard label="Saidas previstas" value={formatMoney(expectedExpenses)} detail={`${openPayables.length} em aberto`} />
+        <MetricCard label="Saidas pagas" value={formatMoney(paidExpenses)} detail={`${paidPercent}% realizado`} />
+        <MetricCard label="Saldo projetado" value={formatMoney(projectedBalance)} detail="entradas menos saidas" />
+        <MetricCard label="Notas com pendencia" value={String(pendingNotes)} detail="fila fiscal" />
       </section>
       <section className="table-panel">
         <h2>Fila de atencao</h2>
