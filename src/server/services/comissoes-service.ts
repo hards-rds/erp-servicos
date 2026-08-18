@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { calculateCommissionAmount } from "@/domains/finance/commissions";
+import { selectCommissionRate, type CommissionRule } from "@/domains/finance/commission-rules";
 
 type SourceType = "venda" | "servico";
 
@@ -17,6 +18,47 @@ type SyncSourceCommissionInput = {
   dueDate: string;
   canceled?: boolean;
 };
+
+type ResolveCommissionRateInput = {
+  supabase: SupabaseClient;
+  companyId: string;
+  sellerId: string;
+  sourceType: SourceType;
+  itemKey: string;
+};
+
+export async function resolveSellerCommissionRate(input: ResolveCommissionRateInput) {
+  const { data: seller, error: sellerError } = await input.supabase
+    .from("commission_sellers")
+    .select("id,profile_id")
+    .eq("id", input.sellerId)
+    .eq("company_id", input.companyId)
+    .eq("active", true)
+    .maybeSingle();
+
+  if (sellerError) return { seller: null, ratePercent: null, error: sellerError };
+  if (!seller) return { seller: null, ratePercent: null, error: new Error("Vendedor nao pertence a empresa ativa.") };
+
+  const { data: rules, error: rulesError } = await input.supabase
+    .from("seller_commission_rules")
+    .select("source_type,item_key,rate_percent,active")
+    .eq("company_id", input.companyId)
+    .eq("commission_seller_id", seller.id)
+    .eq("source_type", input.sourceType)
+    .eq("active", true)
+    .in("item_key", [input.itemKey, "*"]);
+
+  if (rulesError) return { seller, ratePercent: null, error: rulesError };
+  const ratePercent = selectCommissionRate((rules || []) as CommissionRule[], {
+    sourceType: input.sourceType,
+    itemKey: input.itemKey
+  });
+  if (ratePercent === null) {
+    return { seller, ratePercent: null, error: new Error("Nenhuma regra de comissao foi configurada para este item.") };
+  }
+
+  return { seller, ratePercent, error: null };
+}
 
 export async function syncSourceCommission(input: SyncSourceCommissionInput) {
   const sourceColumn = input.sourceType === "venda" ? "sale_id" : "service_record_id";
@@ -55,8 +97,8 @@ export async function syncSourceCommission(input: SyncSourceCommissionInput) {
   if (ratePercent === null || ratePercent > 100) return { error: new Error("Percentual da comissao invalido.") };
 
   const { data: seller } = await input.supabase
-    .from("profiles")
-    .select("id")
+    .from("commission_sellers")
+    .select("id,profile_id")
     .eq("id", input.sellerId)
     .eq("company_id", input.companyId)
     .eq("active", true)
@@ -68,7 +110,8 @@ export async function syncSourceCommission(input: SyncSourceCommissionInput) {
   const commissionAmount = calculateCommissionAmount(input.baseAmount, ratePercent);
   const payload = {
     company_id: input.companyId,
-    seller_id: input.sellerId,
+    commission_seller_id: seller.id,
+    seller_id: seller.profile_id,
     source_type: input.sourceType,
     reference_date: input.referenceDate,
     description: input.description,

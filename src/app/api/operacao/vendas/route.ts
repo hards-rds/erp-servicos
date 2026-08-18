@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { syncSourceCommission } from "@/server/services/comissoes-service";
+import { resolveSellerCommissionRate, syncSourceCommission } from "@/server/services/comissoes-service";
 
 function readString(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
@@ -49,15 +49,10 @@ export async function POST(request: NextRequest) {
   const saleDate = readString(formData, "saleDate") || new Date().toISOString().slice(0, 10);
   const status = readString(formData, "status") || "faturada";
   const sellerId = readString(formData, "sellerId") || null;
-  const commissionRate = readString(formData, "commissionRate")
-    ? parseMoney(readString(formData, "commissionRate"))
-    : null;
 
   if (
     !productId || !quantity || quantity <= 0 || unitPrice === null || unitPrice < 0 || discount < 0 ||
-    !["aberta", "faturada", "recebida"].includes(status) ||
-    (sellerId && (commissionRate === null || commissionRate <= 0 || commissionRate > 100)) ||
-    (!sellerId && commissionRate !== null && commissionRate > 0)
+    !["aberta", "faturada", "recebida"].includes(status)
   ) {
     return redirectWith(request, "invalid");
   }
@@ -71,6 +66,21 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   if (!product) return redirectWith(request, "invalid");
+
+  let commissionRate: number | null = null;
+  if (sellerId) {
+    const commissionRule = await resolveSellerCommissionRate({
+      supabase,
+      companyId: profile.company_id,
+      sellerId,
+      sourceType: "venda",
+      itemKey: product.id
+    });
+    if (commissionRule.error || commissionRule.ratePercent === null) {
+      return redirectWith(request, "commission_rule_missing");
+    }
+    commissionRate = commissionRule.ratePercent;
+  }
 
   const currentStock = Number(product.current_stock || 0);
   if (currentStock < quantity) return redirectWith(request, "stock_insufficient");

@@ -48,8 +48,8 @@ export async function POST(request: NextRequest) {
     ) return redirectWith(request, "invalid");
 
     const { data: seller } = await supabase
-      .from("profiles")
-      .select("id")
+      .from("commission_sellers")
+      .select("id,profile_id")
       .eq("id", sellerId)
       .eq("company_id", profile.company_id)
       .eq("active", true)
@@ -58,7 +58,8 @@ export async function POST(request: NextRequest) {
 
     const { error } = await supabase.from("commissions").insert({
       company_id: profile.company_id,
-      seller_id: seller.id,
+      commission_seller_id: seller.id,
+      seller_id: seller.profile_id,
       source_type: "manual",
       reference_date: referenceDate,
       description,
@@ -82,7 +83,7 @@ export async function POST(request: NextRequest) {
 
   const { data: commission } = await supabase
     .from("commissions")
-    .select("id,seller_id,description,reference_date,due_date,commission_amount,status,payable_id")
+    .select("id,commission_seller_id,description,reference_date,due_date,commission_amount,status,payable_id")
     .eq("id", commissionId)
     .eq("company_id", profile.company_id)
     .maybeSingle();
@@ -97,9 +98,10 @@ export async function POST(request: NextRequest) {
 
   if (action === "approve") {
     const { data: seller } = await supabase
-      .from("profiles")
+      .from("commission_sellers")
       .select("name,email")
-      .eq("id", commission.seller_id)
+      .eq("id", commission.commission_seller_id)
+      .eq("company_id", profile.company_id)
       .maybeSingle();
     const now = new Date().toISOString();
     const { data: payable, error: payableError } = await supabase.from("payables").insert({

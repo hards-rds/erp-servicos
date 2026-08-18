@@ -19,6 +19,7 @@ import {
   calculateCommissionAmount,
   canTransitionCommission
 } from "../src/domains/finance/commissions.ts";
+import { selectCommissionRate } from "../src/domains/finance/commission-rules.ts";
 
 test("valida documentos brasileiros", () => {
   assert.equal(isValidCpf("529.982.247-25"), true);
@@ -77,6 +78,21 @@ test("calcula comissao e controla seu fluxo de aprovacao", () => {
   assert.equal(canTransitionCommission("aprovada", "paga"), true);
   assert.equal(canTransitionCommission("paga", "cancelada"), false);
   assert.throws(() => assertCommissionTransition("pendente", "paga"), /Transicao/);
+});
+
+test("prioriza percentual especifico e usa o percentual padrao como alternativa", () => {
+  const rules = [
+    { source_type: "venda" as const, item_key: "*", rate_percent: 2 },
+    { source_type: "venda" as const, item_key: "produto-1", rate_percent: 4.5 },
+    { source_type: "servico" as const, item_key: "*", rate_percent: 3 },
+    { source_type: "servico" as const, item_key: "consultoria", rate_percent: 8 }
+  ];
+
+  assert.equal(selectCommissionRate(rules, { sourceType: "venda", itemKey: "produto-1" }), 4.5);
+  assert.equal(selectCommissionRate(rules, { sourceType: "venda", itemKey: "produto-2" }), 2);
+  assert.equal(selectCommissionRate(rules, { sourceType: "servico", itemKey: "consultoria" }), 8);
+  assert.equal(selectCommissionRate(rules, { sourceType: "servico", itemKey: "suporte" }), 3);
+  assert.equal(selectCommissionRate([], { sourceType: "venda", itemKey: "produto-1" }), null);
 });
 
 test("valida NFS-e e chave idempotente", () => {

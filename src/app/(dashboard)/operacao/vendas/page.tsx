@@ -39,6 +39,7 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   invalid: { kind: "error", text: "Revise produto, quantidade e valor da venda." },
   stock_insufficient: { kind: "error", text: "Estoque insuficiente para concluir a venda." },
   error: { kind: "error", text: "Nao foi possivel registrar a venda agora." },
+  commission_rule_missing: { kind: "error", text: "Configure o percentual deste vendedor para o produto antes de concluir a venda." },
   commission_error: { kind: "error", text: "A venda foi registrada, mas nao foi possivel gerar a comissao." },
   profile_error: { kind: "error", text: "Seu usuario ainda nao esta vinculado a uma empresa." }
 };
@@ -74,7 +75,7 @@ export default async function VendasPage({ searchParams }: VendasPageProps) {
       supabase.from("clients").select("id,legal_name").eq("company_id", companyId).eq("status", "ativo").order("legal_name"),
       supabase.from("products").select("id,name,sale_price,current_stock,unit").eq("company_id", companyId).eq("active", true).gt("current_stock", 0).order("name"),
       supabase.from("sales").select("id,sale_date,description,net_amount,status,clients(legal_name)").eq("company_id", companyId).order("sale_date", { ascending: false }).order("created_at", { ascending: false }).limit(50),
-      supabase.from("profiles").select("id,name,email").eq("company_id", companyId).eq("active", true).order("name")
+      supabase.from("commission_sellers").select("id,name,email").eq("company_id", companyId).eq("active", true).order("name")
     ])
     : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }];
   const allClients = (clients || []) as ClientRow[];
@@ -206,16 +207,11 @@ export default async function VendasPage({ searchParams }: VendasPageProps) {
                   ))}
                 </select>
               </label>
-              <div className="form-grid">
-                <label>
-                  Percentual
-                  <input name="commissionRate" inputMode="decimal" placeholder="Ex.: 5,00" />
-                </label>
-                <label>
-                  Vencimento da comissao
-                  <input name="commissionDueDate" type="date" defaultValue={today} />
-                </label>
-              </div>
+              <label>
+                Vencimento da comissao
+                <input name="commissionDueDate" type="date" defaultValue={today} />
+              </label>
+              <a className="ghost-button button-link" href="/financeiro/comissoes/vendedores">Configurar percentuais</a>
             </fieldset>
             <label>
               Observacoes

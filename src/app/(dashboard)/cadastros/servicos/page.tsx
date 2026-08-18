@@ -1,6 +1,7 @@
 import { PageHeader } from "@/components/layout/page-header";
 import { DeleteServiceButton } from "@/components/services/delete-service-button";
 import { canDeleteServiceStatus } from "@/domains/services/deletion";
+import { segmentLabels, serviceTypeOptions, type ServiceSegment } from "@/domains/services/catalog";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type ServicosPageProps = {
@@ -20,7 +21,7 @@ type ServiceRecord = {
   notes: string | null;
   commissions: Array<{
     id: string;
-    seller_id: string;
+    commission_seller_id: string;
     rate_percent: number | string;
     due_date: string;
     status: string;
@@ -34,7 +35,6 @@ type ServiceRecord = {
   }[] | null;
 };
 
-type ServiceSegment = "tecnologia" | "otica" | "generico";
 type ClientOption = {
   id: string;
   legal_name: string;
@@ -63,41 +63,9 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   delete_error: { kind: "error", text: "Nao foi possivel excluir o servico agora." },
   update_error: { kind: "error", text: "Nao foi possivel atualizar o servico agora." },
   error: { kind: "error", text: "Nao foi possivel cadastrar o servico agora." },
+  commission_rule_missing: { kind: "error", text: "Configure o percentual deste vendedor para o tipo de servico antes de salvar." },
   commission_error: { kind: "error", text: "O servico foi salvo, mas nao foi possivel atualizar a comissao." },
   profile_error: { kind: "error", text: "Seu usuario ainda nao esta vinculado a uma empresa." }
-};
-
-const serviceTypeOptions: Record<ServiceSegment, { value: string; label: string }[]> = {
-  tecnologia: [
-    { value: "suporte", label: "Suporte" },
-    { value: "manutencao", label: "Manutencao" },
-    { value: "implantacao", label: "Implantacao" },
-    { value: "consultoria", label: "Consultoria" },
-    { value: "visita_tecnica", label: "Visita tecnica" },
-    { value: "recorrente", label: "Recorrente" },
-    { value: "avulso", label: "Avulso" }
-  ],
-  otica: [
-    { value: "venda_oculos", label: "Venda de oculos" },
-    { value: "lente", label: "Lente" },
-    { value: "armacao", label: "Armacao" },
-    { value: "ajuste", label: "Ajuste" },
-    { value: "exame", label: "Exame" },
-    { value: "garantia", label: "Garantia" },
-    { value: "avulso", label: "Avulso" }
-  ],
-  generico: [
-    { value: "avulso", label: "Avulso" },
-    { value: "recorrente", label: "Recorrente" },
-    { value: "consultoria", label: "Consultoria" },
-    { value: "manutencao", label: "Manutencao" }
-  ]
-};
-
-const segmentLabels: Record<ServiceSegment, string> = {
-  tecnologia: "Tecnologia",
-  otica: "Otica",
-  generico: "Generico"
 };
 
 function formatMoney(value: number | string) {
@@ -226,23 +194,18 @@ function ServiceForm({
         <legend>Comissao do vendedor</legend>
         <label>
           Vendedor
-          <select name="sellerId" defaultValue={commission?.seller_id || ""}>
+          <select name="sellerId" defaultValue={commission?.commission_seller_id || ""}>
             <option value="">Sem comissao</option>
             {sellers.map((seller) => (
               <option key={seller.id} value={seller.id}>{seller.name || seller.email}</option>
             ))}
           </select>
         </label>
-        <div className="form-grid">
-          <label>
-            Percentual
-            <input name="commissionRate" inputMode="decimal" defaultValue={moneyInputValue(commission?.rate_percent)} placeholder="Ex.: 5,00" />
-          </label>
-          <label>
-            Vencimento da comissao
-            <input name="commissionDueDate" type="date" defaultValue={commission?.due_date || service?.due_date || today} />
-          </label>
-        </div>
+        <label>
+          Vencimento da comissao
+          <input name="commissionDueDate" type="date" defaultValue={commission?.due_date || service?.due_date || today} />
+        </label>
+        <a className="ghost-button button-link" href="/financeiro/comissoes/vendedores">Configurar percentuais</a>
         {commission && commission.status !== "pendente" ? (
           <small className="muted">Comissao {commission.status}; valores financeiros ja consolidados nao serao alterados.</small>
         ) : null}
@@ -390,8 +353,8 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
   const [{ data: clients }, { data: services }, { data: sellers }] = profile?.company_id
     ? await Promise.all([
       supabase.from("clients").select("id,legal_name,document,status").eq("company_id", profile.company_id).eq("status", "ativo").order("legal_name"),
-      supabase.from("service_records").select("id,client_id,service_description,service_type,amount,service_date,due_date,status,fiscal_service_data,notes,clients(legal_name,document),commissions(id,seller_id,rate_percent,due_date,status)").eq("company_id", profile.company_id).order("service_date", { ascending: false }).limit(50),
-      supabase.from("profiles").select("id,name,email").eq("company_id", profile.company_id).eq("active", true).order("name")
+      supabase.from("service_records").select("id,client_id,service_description,service_type,amount,service_date,due_date,status,fiscal_service_data,notes,clients(legal_name,document),commissions(id,commission_seller_id,rate_percent,due_date,status)").eq("company_id", profile.company_id).order("service_date", { ascending: false }).limit(50),
+      supabase.from("commission_sellers").select("id,name,email").eq("company_id", profile.company_id).eq("active", true).order("name")
     ])
     : [{ data: [] }, { data: [] }, { data: [] }];
   const message = params?.status ? statusMessages[params.status] : null;

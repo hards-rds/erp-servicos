@@ -4,7 +4,7 @@ import { MetricCard } from "@/components/ui/metric-card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-type SellerRow = { id: string; name: string | null; email: string };
+type SellerRow = { id: string; name: string; email: string | null };
 type CommissionRow = {
   id: string;
   description: string;
@@ -17,7 +17,7 @@ type CommissionRow = {
   status: string;
   paid_at: string | null;
   payment_method: string | null;
-  seller: { name: string | null; email: string } | Array<{ name: string | null; email: string }> | null;
+  seller: { name: string; email: string | null } | Array<{ name: string; email: string | null }> | null;
 };
 
 const messages: Record<string, { kind: "success" | "error"; text: string }> = {
@@ -68,14 +68,14 @@ export default async function ComissoesPage({ searchParams }: { searchParams?: P
   if (profile?.company_id) {
     const [{ data: sellerData }, { data: commissionData }] = await Promise.all([
       supabase
-        .from("profiles")
+        .from("commission_sellers")
         .select("id,name,email")
         .eq("company_id", profile.company_id)
         .eq("active", true)
         .order("name"),
       supabase
         .from("commissions")
-        .select("id,description,source_type,reference_date,due_date,base_amount,rate_percent,commission_amount,status,paid_at,payment_method,seller:profiles!commissions_seller_id_fkey(name,email)")
+        .select("id,description,source_type,reference_date,due_date,base_amount,rate_percent,commission_amount,status,paid_at,payment_method,seller:commission_sellers!commissions_commission_seller_id_fkey(name,email)")
         .eq("company_id", profile.company_id)
         .order("reference_date", { ascending: false })
         .order("created_at", { ascending: false })
@@ -98,6 +98,7 @@ export default async function ComissoesPage({ searchParams }: { searchParams?: P
         area="Financeiro / Comissoes"
         title="Comissoes de vendedores"
         description="Controle comissoes de vendas e servicos, aprovacao e pagamento por vendedor."
+        action={<a className="primary-button button-link" href="/financeiro/comissoes/vendedores">Vendedores e percentuais</a>}
       />
       {message ? <div className={message.kind === "success" ? "form-success" : "form-error"}>{message.text}</div> : null}
       <section className="metrics">

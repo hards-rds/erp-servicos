@@ -259,13 +259,13 @@ async function commissionsReport(filters: ReportFilters): Promise<ReportResult> 
     status: string;
     paid_at: string | null;
     payment_method: string | null;
-    seller: { name: string | null; email: string } | Array<{ name: string | null; email: string }> | null;
+    seller: { name: string; email: string | null } | Array<{ name: string; email: string | null }> | null;
   };
 
   const { supabase, companyId } = await getReportContext();
   let query = supabase
     .from("commissions")
-    .select("id,description,source_type,reference_date,due_date,base_amount,rate_percent,commission_amount,status,paid_at,payment_method,seller:profiles!commissions_seller_id_fkey(name,email)")
+    .select("id,description,source_type,reference_date,due_date,base_amount,rate_percent,commission_amount,status,paid_at,payment_method,seller:commission_sellers!commissions_commission_seller_id_fkey(name,email)")
     .eq("company_id", companyId)
     .gte("reference_date", filters.from)
     .lte("reference_date", filters.to)

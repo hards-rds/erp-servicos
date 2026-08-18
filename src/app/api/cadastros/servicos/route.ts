@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceDeletionBlock } from "@/domains/services/deletion";
 import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
-import { syncSourceCommission } from "@/server/services/comissoes-service";
+import { resolveSellerCommissionRate, syncSourceCommission } from "@/server/services/comissoes-service";
 
 function readString(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
@@ -186,9 +186,6 @@ export async function POST(request: NextRequest) {
   const serviceDescription = readString(formData, "serviceDescription");
   const amount = parseMoney(readString(formData, "amount"));
   const sellerId = readString(formData, "sellerId") || null;
-  const commissionRate = readString(formData, "commissionRate")
-    ? parseMoney(readString(formData, "commissionRate"))
-    : null;
 
   if (action === "delete") {
     if (!serviceId) {
@@ -238,11 +235,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (
-    !clientId || !serviceDescription || amount === null || amount < 0 ||
-    (sellerId && (commissionRate === null || commissionRate <= 0 || commissionRate > 100)) ||
-    (!sellerId && commissionRate !== null && commissionRate > 0)
-  ) {
+  if (!clientId || !serviceDescription || amount === null || amount < 0) {
     return NextResponse.redirect(new URL("/cadastros/servicos?status=invalid", request.url), 303);
   }
 
@@ -259,6 +252,21 @@ export async function POST(request: NextRequest) {
     updated_by: context.profileId,
     updated_at: new Date().toISOString()
   };
+
+  let commissionRate: number | null = null;
+  if (sellerId && payload.status !== "cancelado") {
+    const commissionRule = await resolveSellerCommissionRate({
+      supabase,
+      companyId: context.companyId,
+      sellerId,
+      sourceType: "servico",
+      itemKey: payload.service_type
+    });
+    if (commissionRule.error || commissionRule.ratePercent === null) {
+      return NextResponse.redirect(new URL("/cadastros/servicos?status=commission_rule_missing", request.url), 303);
+    }
+    commissionRate = commissionRule.ratePercent;
+  }
 
   if (action === "update") {
     if (!serviceId) {
