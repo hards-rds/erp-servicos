@@ -148,11 +148,14 @@ export async function POST(request: NextRequest) {
     }
 
     let productId: string | null = null;
+    let serviceCatalogId: string | null = null;
     let serviceType: string | null = null;
     let itemKey = "*";
 
     if (sourceType === "venda") {
       productId = readString(formData, "productId") || null;
+      serviceCatalogId = readString(formData, "catalogServiceId") || null;
+      if (productId && serviceCatalogId) return redirectWith(request, "invalid_item");
       if (productId) {
         const { data: product } = await supabase
           .from("products")
@@ -163,6 +166,16 @@ export async function POST(request: NextRequest) {
           .maybeSingle();
         if (!product) return redirectWith(request, "invalid_item");
         itemKey = product.id;
+      } else if (serviceCatalogId) {
+        const { data: catalogService } = await supabase
+          .from("service_catalog")
+          .select("id")
+          .eq("id", serviceCatalogId)
+          .eq("company_id", profile.company_id)
+          .eq("active", true)
+          .maybeSingle();
+        if (!catalogService) return redirectWith(request, "invalid_item");
+        itemKey = catalogService.id;
       }
     } else {
       serviceType = readString(formData, "serviceType") || null;
@@ -185,6 +198,7 @@ export async function POST(request: NextRequest) {
       source_type: sourceType,
       item_key: itemKey,
       product_id: productId,
+      service_catalog_id: serviceCatalogId,
       service_type: serviceType,
       rate_percent: ratePercent,
       active: true,

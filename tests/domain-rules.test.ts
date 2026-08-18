@@ -20,6 +20,7 @@ import {
   canTransitionCommission
 } from "../src/domains/finance/commissions.ts";
 import { selectCommissionRate } from "../src/domains/finance/commission-rules.ts";
+import { calculateSaleAmounts, saleItemMovesStock } from "../src/domains/sales/items.ts";
 
 test("valida documentos brasileiros", () => {
   assert.equal(isValidCpf("529.982.247-25"), true);
@@ -93,6 +94,13 @@ test("prioriza percentual especifico e usa o percentual padrao como alternativa"
   assert.equal(selectCommissionRate(rules, { sourceType: "servico", itemKey: "consultoria" }), 8);
   assert.equal(selectCommissionRate(rules, { sourceType: "servico", itemKey: "suporte" }), 3);
   assert.equal(selectCommissionRate([], { sourceType: "venda", itemKey: "produto-1" }), null);
+});
+
+test("calcula venda e movimenta estoque somente para produtos", () => {
+  assert.deepEqual(calculateSaleAmounts(2, 175, 20), { grossAmount: 350, netAmount: 330 });
+  assert.equal(saleItemMovesStock("produto"), true);
+  assert.equal(saleItemMovesStock("servico_catalogo"), false);
+  assert.equal(saleItemMovesStock("servico_avulso"), false);
 });
 
 test("valida NFS-e e chave idempotente", () => {

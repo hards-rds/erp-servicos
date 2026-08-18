@@ -11,6 +11,7 @@ export function SellerRuleActions({
   rule,
   sellers,
   products,
+  catalogServices,
   serviceTypes
 }: {
   rule: {
@@ -18,11 +19,13 @@ export function SellerRuleActions({
     sellerId: string;
     sourceType: "venda" | "servico";
     productId: string | null;
+    catalogServiceId: string | null;
     serviceType: string | null;
     ratePercent: number | string;
   };
   sellers: Option[];
   products: Option[];
+  catalogServices: Option[];
   serviceTypes: ServiceOption[];
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -48,7 +51,7 @@ export function SellerRuleActions({
             <X aria-hidden="true" />
           </button>
         </div>
-        <SellerRuleForm sellers={sellers} products={products} serviceTypes={serviceTypes} rule={rule} />
+        <SellerRuleForm sellers={sellers} products={products} catalogServices={catalogServices} serviceTypes={serviceTypes} rule={rule} />
       </dialog>
     </div>
   );

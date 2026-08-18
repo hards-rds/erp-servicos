@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
   const context = await getActiveContext({ supabase, userId: user.id });
 
   if (!context?.companyId) {
-    return NextResponse.redirect(new URL("/cadastros/servicos?status=profile_error", request.url), 303);
+    return NextResponse.redirect(new URL("/cadastros/servicos?view=atendimentos&status=profile_error", request.url), 303);
   }
 
   const formData = await request.formData();
@@ -189,7 +189,7 @@ export async function POST(request: NextRequest) {
 
   if (action === "delete") {
     if (!serviceId) {
-      return NextResponse.redirect(new URL("/cadastros/servicos?status=invalid_delete", request.url), 303);
+      return NextResponse.redirect(new URL("/cadastros/servicos?view=atendimentos&status=invalid_delete", request.url), 303);
     }
 
     const { data: service } = await supabase
@@ -200,7 +200,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (!service) {
-      return NextResponse.redirect(new URL("/cadastros/servicos?status=delete_not_found", request.url), 303);
+      return NextResponse.redirect(new URL("/cadastros/servicos?view=atendimentos&status=delete_not_found", request.url), 303);
     }
 
     const { data: financialEntry, error: financialEntryError } = await supabase
@@ -211,16 +211,16 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (financialEntryError) {
-      return NextResponse.redirect(new URL("/cadastros/servicos?status=delete_error", request.url), 303);
+      return NextResponse.redirect(new URL("/cadastros/servicos?view=atendimentos&status=delete_error", request.url), 303);
     }
 
     const block = serviceDeletionBlock(service.status, Boolean(financialEntry));
 
     if (block === "service_active") {
-      return NextResponse.redirect(new URL("/cadastros/servicos?status=delete_not_stopped", request.url), 303);
+      return NextResponse.redirect(new URL("/cadastros/servicos?view=atendimentos&status=delete_not_stopped", request.url), 303);
     }
     if (block === "financial_entry") {
-      return NextResponse.redirect(new URL("/cadastros/servicos?status=delete_financial", request.url), 303);
+      return NextResponse.redirect(new URL("/cadastros/servicos?view=atendimentos&status=delete_financial", request.url), 303);
     }
 
     const { error } = await supabase
@@ -230,13 +230,13 @@ export async function POST(request: NextRequest) {
       .eq("company_id", context.companyId);
 
     return NextResponse.redirect(
-      new URL(`/cadastros/servicos?status=${error ? "delete_error" : "deleted"}`, request.url),
+      new URL(`/cadastros/servicos?view=atendimentos&status=${error ? "delete_error" : "deleted"}`, request.url),
       303
     );
   }
 
   if (!clientId || !serviceDescription || amount === null || amount < 0) {
-    return NextResponse.redirect(new URL("/cadastros/servicos?status=invalid", request.url), 303);
+    return NextResponse.redirect(new URL("/cadastros/servicos?view=atendimentos&status=invalid", request.url), 303);
   }
 
   const payload = {
@@ -263,14 +263,14 @@ export async function POST(request: NextRequest) {
       itemKey: payload.service_type
     });
     if (commissionRule.error || commissionRule.ratePercent === null) {
-      return NextResponse.redirect(new URL("/cadastros/servicos?status=commission_rule_missing", request.url), 303);
+      return NextResponse.redirect(new URL("/cadastros/servicos?view=atendimentos&status=commission_rule_missing", request.url), 303);
     }
     commissionRate = commissionRule.ratePercent;
   }
 
   if (action === "update") {
     if (!serviceId) {
-      return NextResponse.redirect(new URL("/cadastros/servicos?status=invalid", request.url), 303);
+      return NextResponse.redirect(new URL("/cadastros/servicos?view=atendimentos&status=invalid", request.url), 303);
     }
 
     const { error } = await supabase
@@ -302,11 +302,11 @@ export async function POST(request: NextRequest) {
         canceled: payload.status === "cancelado"
       });
       if (commissionResult.error) {
-        return NextResponse.redirect(new URL("/cadastros/servicos?status=commission_error", request.url), 303);
+        return NextResponse.redirect(new URL("/cadastros/servicos?view=atendimentos&status=commission_error", request.url), 303);
       }
     }
 
-    return NextResponse.redirect(new URL(`/cadastros/servicos?status=${error ? "update_error" : "updated"}`, request.url), 303);
+    return NextResponse.redirect(new URL(`/cadastros/servicos?view=atendimentos&status=${error ? "update_error" : "updated"}`, request.url), 303);
   }
 
   const { data: createdService, error } = await supabase.from("service_records").insert({
@@ -338,9 +338,9 @@ export async function POST(request: NextRequest) {
       canceled: payload.status === "cancelado"
     });
     if (commissionResult.error) {
-      return NextResponse.redirect(new URL("/cadastros/servicos?status=commission_error", request.url), 303);
+      return NextResponse.redirect(new URL("/cadastros/servicos?view=atendimentos&status=commission_error", request.url), 303);
     }
   }
 
-  return NextResponse.redirect(new URL(`/cadastros/servicos?status=${error ? "error" : "created"}`, request.url), 303);
+  return NextResponse.redirect(new URL(`/cadastros/servicos?view=atendimentos&status=${error ? "error" : "created"}`, request.url), 303);
 }

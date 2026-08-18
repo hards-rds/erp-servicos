@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/layout/page-header";
+import { SaleForm } from "@/components/sales/sale-form";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -25,6 +26,13 @@ type SellerRow = {
   email: string;
 };
 
+type CatalogServiceRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  sale_price: number | string;
+};
+
 type SaleRow = {
   id: string;
   sale_date: string;
@@ -35,11 +43,11 @@ type SaleRow = {
 };
 
 const statusMessages: Record<string, { kind: "success" | "error"; text: string }> = {
-  created: { kind: "success", text: "Venda registrada, estoque baixado e entrada financeira gerada." },
-  invalid: { kind: "error", text: "Revise produto, quantidade e valor da venda." },
+  created: { kind: "success", text: "Venda registrada e entrada financeira gerada." },
+  invalid: { kind: "error", text: "Revise o item, a quantidade e o valor da venda." },
   stock_insufficient: { kind: "error", text: "Estoque insuficiente para concluir a venda." },
   error: { kind: "error", text: "Nao foi possivel registrar a venda agora." },
-  commission_rule_missing: { kind: "error", text: "Configure o percentual deste vendedor para o produto antes de concluir a venda." },
+  commission_rule_missing: { kind: "error", text: "Configure o percentual deste vendedor para o item antes de concluir a venda." },
   commission_error: { kind: "error", text: "A venda foi registrada, mas nao foi possivel gerar a comissao." },
   profile_error: { kind: "error", text: "Seu usuario ainda nao esta vinculado a uma empresa." }
 };
@@ -57,10 +65,6 @@ function getClientName(sale: SaleRow) {
   return client?.legal_name || "Consumidor final";
 }
 
-function formatPriceInput(value: number | string) {
-  return Number(value).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
 export default async function VendasPage({ searchParams }: VendasPageProps) {
   const params = await searchParams;
   const supabase = await createServerSupabaseClient();
@@ -70,27 +74,27 @@ export default async function VendasPage({ searchParams }: VendasPageProps) {
     : { data: null };
   const companyId = profile?.company_id;
 
-  const [{ data: clients }, { data: products }, { data: sales }, { data: sellers }] = companyId
+  const [{ data: clients }, { data: products }, { data: catalogServices }, { data: sales }, { data: sellers }] = companyId
     ? await Promise.all([
       supabase.from("clients").select("id,legal_name").eq("company_id", companyId).eq("status", "ativo").order("legal_name"),
       supabase.from("products").select("id,name,sale_price,current_stock,unit").eq("company_id", companyId).eq("active", true).gt("current_stock", 0).order("name"),
+      supabase.from("service_catalog").select("id,name,description,sale_price").eq("company_id", companyId).eq("active", true).order("name"),
       supabase.from("sales").select("id,sale_date,description,net_amount,status,clients(legal_name)").eq("company_id", companyId).order("sale_date", { ascending: false }).order("created_at", { ascending: false }).limit(50),
       supabase.from("commission_sellers").select("id,name,email").eq("company_id", companyId).eq("active", true).order("name")
     ])
-    : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }];
+    : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }];
   const allClients = (clients || []) as ClientRow[];
   const allProducts = (products || []) as ProductRow[];
+  const allCatalogServices = (catalogServices || []) as CatalogServiceRow[];
   const allSales = (sales || []) as SaleRow[];
   const allSellers = (sellers || []) as SellerRow[];
   const message = params?.status ? statusMessages[params.status] : null;
-  const today = new Date().toISOString().slice(0, 10);
-
   return (
     <>
       <PageHeader
         area="Operacao / Vendas"
         title="Vendas"
-        description="Venda direta com baixa de estoque e geracao de contas a receber."
+        description="Venda de produtos, servicos cadastrados ou atendimentos avulsos."
         action={<a className="primary-button button-link" href="/operacao/estoque">Ver estoque</a>}
       />
       {message ? <div className={message.kind === "success" ? "form-success" : "form-error"}>{message.text}</div> : null}
@@ -128,97 +132,23 @@ export default async function VendasPage({ searchParams }: VendasPageProps) {
         </section>
         <section className="form-panel">
           <h2>Nova venda</h2>
-          <form className="form-stack" action="/api/operacao/vendas" method="post">
-            <label>
-              Cliente
-              <select name="clientId" defaultValue="">
-                <option value="">Consumidor final</option>
-                {allClients.map((client) => (
-                  <option key={client.id} value={client.id}>{client.legal_name}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Produto
-              <select name="productId" required defaultValue="">
-                <option value="" disabled>Selecione um produto com estoque</option>
-                {allProducts.map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.name} · {Number(product.current_stock).toLocaleString("pt-BR", { maximumFractionDigits: 3 })} {product.unit} · {formatMoney(product.sale_price)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Descricao da venda
-              <input name="description" placeholder="Ex.: Venda de armacao e lentes / equipamento" />
-            </label>
-            <div className="form-grid">
-              <label>
-                Quantidade
-                <input name="quantity" inputMode="decimal" placeholder="1" required />
-              </label>
-              <label>
-                Valor unitario
-                <input
-                  name="unitPrice"
-                  inputMode="decimal"
-                  placeholder={allProducts[0] ? formatPriceInput(allProducts[0].sale_price) : "0,00"}
-                  required
-                />
-              </label>
-            </div>
-            <div className="form-grid">
-              <label>
-                Desconto
-                <input name="discountAmount" inputMode="decimal" placeholder="0,00" />
-              </label>
-              <label>
-                Data da venda
-                <input name="saleDate" type="date" defaultValue={today} required />
-              </label>
-            </div>
-            <div className="form-grid">
-              <label>
-                Vencimento
-                <input name="dueDate" type="date" defaultValue={today} />
-              </label>
-              <label>
-                Status
-                <select name="status" defaultValue="faturada">
-                  <option value="faturada">Faturada</option>
-                  <option value="recebida">Recebida</option>
-                  <option value="aberta">Aberta</option>
-                </select>
-              </label>
-            </div>
-            <label>
-              Forma de pagamento
-              <input name="paymentMethod" placeholder="Pix, cartao, boleto, dinheiro..." />
-            </label>
-            <fieldset className="checkbox-panel">
-              <legend>Comissao do vendedor</legend>
-              <label>
-                Vendedor
-                <select name="sellerId" defaultValue="">
-                  <option value="">Sem comissao</option>
-                  {allSellers.map((seller) => (
-                    <option key={seller.id} value={seller.id}>{seller.name || seller.email}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Vencimento da comissao
-                <input name="commissionDueDate" type="date" defaultValue={today} />
-              </label>
-              <a className="ghost-button button-link" href="/financeiro/comissoes/vendedores">Configurar percentuais</a>
-            </fieldset>
-            <label>
-              Observacoes
-              <textarea name="notes" placeholder="Entrega, condicoes comerciais ou observacoes internas" />
-            </label>
-            <button className="primary-button" type="submit" disabled={!allProducts.length}>Registrar venda</button>
-          </form>
+          <SaleForm
+            clients={allClients.map((client) => ({ id: client.id, name: client.legal_name }))}
+            products={allProducts.map((product) => ({
+              id: product.id,
+              name: product.name,
+              price: Number(product.sale_price),
+              stock: Number(product.current_stock),
+              unit: product.unit
+            }))}
+            catalogServices={allCatalogServices.map((service) => ({
+              id: service.id,
+              name: service.name,
+              description: service.description,
+              price: Number(service.sale_price)
+            }))}
+            sellers={allSellers.map((seller) => ({ id: seller.id, name: seller.name || seller.email }))}
+          />
         </section>
       </div>
     </>

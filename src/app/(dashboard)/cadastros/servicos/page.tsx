@@ -1,11 +1,24 @@
 import { PageHeader } from "@/components/layout/page-header";
+import { CatalogServiceActions } from "@/components/services/catalog-service-actions";
 import { DeleteServiceButton } from "@/components/services/delete-service-button";
 import { canDeleteServiceStatus } from "@/domains/services/deletion";
 import { segmentLabels, serviceTypeOptions, type ServiceSegment } from "@/domains/services/catalog";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type ServicosPageProps = {
-  searchParams?: Promise<{ status?: string }>;
+  searchParams?: Promise<{ status?: string; view?: string }>;
+};
+
+type CatalogService = {
+  id: string;
+  code: string | null;
+  name: string;
+  description: string | null;
+  category: string | null;
+  service_type: string;
+  sale_price: number | string;
+  notes: string | null;
+  active: boolean;
 };
 
 type ServiceRecord = {
@@ -49,6 +62,11 @@ type SellerOption = {
 };
 
 const statusMessages: Record<string, { kind: "success" | "error"; text: string }> = {
+  catalog_created: { kind: "success", text: "Servico adicionado ao catalogo." },
+  catalog_updated: { kind: "success", text: "Servico do catalogo atualizado." },
+  catalog_invalid: { kind: "error", text: "Revise nome, tipo e preco do servico." },
+  catalog_duplicate: { kind: "error", text: "Ja existe um servico com este codigo." },
+  catalog_error: { kind: "error", text: "Nao foi possivel salvar o servico no catalogo." },
   created: { kind: "success", text: "Servico cadastrado com sucesso." },
   updated: { kind: "success", text: "Servico atualizado com sucesso." },
   deleted: { kind: "success", text: "Servico excluido com sucesso." },
@@ -338,6 +356,7 @@ function ServiceForm({
 
 export default async function ServicosPage({ searchParams }: ServicosPageProps) {
   const params = await searchParams;
+  const view = params?.view === "atendimentos" ? "atendimentos" : "catalogo";
   const supabase = await createServerSupabaseClient();
   const {
     data: { user }
@@ -350,32 +369,104 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
     : { data: null };
   const segment = ((company?.service_segment || "tecnologia") as ServiceSegment);
   const typeOptions = serviceTypeOptions[segment] || serviceTypeOptions.tecnologia;
-  const [{ data: clients }, { data: services }, { data: sellers }] = profile?.company_id
+  const [{ data: clients }, { data: services }, { data: sellers }, { data: catalog }] = profile?.company_id
     ? await Promise.all([
       supabase.from("clients").select("id,legal_name,document,status").eq("company_id", profile.company_id).eq("status", "ativo").order("legal_name"),
       supabase.from("service_records").select("id,client_id,service_description,service_type,amount,service_date,due_date,status,fiscal_service_data,notes,clients(legal_name,document),commissions(id,commission_seller_id,rate_percent,due_date,status)").eq("company_id", profile.company_id).order("service_date", { ascending: false }).limit(50),
-      supabase.from("commission_sellers").select("id,name,email").eq("company_id", profile.company_id).eq("active", true).order("name")
+      supabase.from("commission_sellers").select("id,name,email").eq("company_id", profile.company_id).eq("active", true).order("name"),
+      supabase.from("service_catalog").select("id,code,name,description,category,service_type,sale_price,notes,active").eq("company_id", profile.company_id).order("active", { ascending: false }).order("name")
     ])
-    : [{ data: [] }, { data: [] }, { data: [] }];
+    : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }];
   const message = params?.status ? statusMessages[params.status] : null;
   const allClients = (clients || []) as ClientOption[];
   const allServices = (services || []) as ServiceRecord[];
   const allSellers = (sellers || []) as SellerOption[];
+  const allCatalogServices = (catalog || []) as CatalogService[];
 
   return (
     <>
       <PageHeader
         area="Cadastros / Servicos"
         title="Servicos"
-        description={`Servicos adaptados para o segmento ${segmentLabels[segment]}.`}
-        action={<a className="primary-button button-link" href="/cadastros/clientes">Novo cliente</a>}
+        description={`Catalogo e atendimentos do segmento ${segmentLabels[segment]}.`}
+        action={<a className="primary-button button-link" href="/operacao/vendas">Nova venda</a>}
       />
       {message ? (
         <div className={message.kind === "success" ? "form-success" : "form-error"}>{message.text}</div>
       ) : null}
+      <nav className="report-tabs" aria-label="Visoes de servicos">
+        <a className={view === "catalogo" ? "active" : ""} href="/cadastros/servicos?view=catalogo">Catalogo</a>
+        <a className={view === "atendimentos" ? "active" : ""} href="/cadastros/servicos?view=atendimentos">Atendimentos</a>
+      </nav>
+      {view === "catalogo" ? (
+        <div className="two-columns">
+          <section className="table-panel">
+            <h2>Servicos prontos</h2>
+            <div className="table-wrap">
+              <table>
+                <thead><tr><th>Servico</th><th>Categoria</th><th>Tipo</th><th>Preco</th><th>Status</th><th>Acoes</th></tr></thead>
+                <tbody>
+                  {allCatalogServices.length ? allCatalogServices.map((service) => (
+                    <tr key={service.id}>
+                      <td>
+                        <strong>{service.name}</strong>
+                        <div className="muted">{service.code || service.description || "Sem codigo"}</div>
+                      </td>
+                      <td>{service.category || "-"}</td>
+                      <td>{typeOptions.find((option) => option.value === service.service_type)?.label || service.service_type}</td>
+                      <td>{formatMoney(service.sale_price)}</td>
+                      <td><span className={`badge ${service.active ? "success" : ""}`}>{service.active ? "ativo" : "inativo"}</span></td>
+                      <td>
+                        <CatalogServiceActions
+                          service={{
+                            id: service.id,
+                            code: service.code,
+                            name: service.name,
+                            description: service.description,
+                            category: service.category,
+                            serviceType: service.service_type,
+                            salePrice: service.sale_price,
+                            notes: service.notes,
+                            active: service.active
+                          }}
+                          typeOptions={typeOptions}
+                        />
+                      </td>
+                    </tr>
+                  )) : <tr><td colSpan={6}>Nenhum servico pronto cadastrado.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <section className="form-panel">
+            <h2>Novo servico pronto</h2>
+            <form className="form-stack" action="/api/cadastros/catalogo-servicos" method="post">
+              <input type="hidden" name="action" value="create" />
+              <div className="form-grid">
+                <label>Nome<input name="name" placeholder="Ex.: Reforma de armacao" required /></label>
+                <label>Codigo<input name="code" placeholder="Codigo interno" /></label>
+              </div>
+              <label>Descricao<input name="description" placeholder="Descricao apresentada na venda" /></label>
+              <div className="form-grid">
+                <label>Categoria<input name="category" placeholder="Reparos, exames, suporte..." /></label>
+                <label>
+                  Tipo
+                  <select name="serviceType" defaultValue={typeOptions[0]?.value || "avulso"}>
+                    {typeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+              </div>
+              <label>Preco de venda<input name="salePrice" inputMode="decimal" placeholder="0,00" required /></label>
+              <label>Observacoes<textarea name="notes" placeholder="Dados internos do servico" /></label>
+              <button className="primary-button" type="submit">Cadastrar servico</button>
+            </form>
+          </section>
+        </div>
+      ) : (
+      <>
       <div className="two-columns">
         <section className="table-panel">
-          <h2>Servicos cadastrados</h2>
+          <h2>Atendimentos cadastrados</h2>
           <div className="table-wrap">
             <table>
               <thead>
@@ -420,7 +511,7 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
                   })
                 ) : (
                   <tr>
-                    <td colSpan={8}>Nenhum servico cadastrado.</td>
+                    <td colSpan={8}>Nenhum atendimento cadastrado.</td>
                   </tr>
                 )}
               </tbody>
@@ -428,12 +519,12 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
           </div>
         </section>
         <section className="form-panel">
-          <h2>Novo servico</h2>
+          <h2>Novo atendimento</h2>
           <ServiceForm clients={allClients} sellers={allSellers} segment={segment} typeOptions={typeOptions} />
         </section>
       </div>
       <section className="table-panel">
-        <h2>Evoluir servicos</h2>
+        <h2>Evoluir atendimentos</h2>
         <div className="settings-list">
           {allServices.length ? (
             allServices.map((service) => {
@@ -457,6 +548,8 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
           )}
         </div>
       </section>
+      </>
+      )}
     </>
   );
 }

@@ -17,16 +17,19 @@ type Seller = {
 };
 type Profile = { id: string; name: string | null; email: string };
 type Product = { id: string; name: string };
+type CatalogService = { id: string; name: string };
 type Rule = {
   id: string;
   commission_seller_id: string;
   source_type: "venda" | "servico";
   item_key: string;
   product_id: string | null;
+  service_catalog_id: string | null;
   service_type: string | null;
   rate_percent: number | string;
   seller: { name: string } | { name: string }[] | null;
   product: { name: string } | { name: string }[] | null;
+  catalog_service: { name: string } | { name: string }[] | null;
 };
 
 const messages: Record<string, { kind: "success" | "error"; text: string }> = {
@@ -61,20 +64,23 @@ export default async function VendedoresPage({ searchParams }: { searchParams?: 
   let sellers: Seller[] = [];
   let profiles: Profile[] = [];
   let products: Product[] = [];
+  let catalogServices: CatalogService[] = [];
   let rules: Rule[] = [];
   let segment: ServiceSegment = "tecnologia";
 
   if (profile?.company_id) {
-    const [{ data: sellerData }, { data: profileData }, { data: productData }, { data: ruleData }, { data: company }] = await Promise.all([
+    const [{ data: sellerData }, { data: profileData }, { data: productData }, { data: catalogServiceData }, { data: ruleData }, { data: company }] = await Promise.all([
       supabase.from("commission_sellers").select("id,name,email,phone,notes,profile_id,active").eq("company_id", profile.company_id).order("active", { ascending: false }).order("name"),
       supabase.from("profiles").select("id,name,email").eq("company_id", profile.company_id).order("name"),
       supabase.from("products").select("id,name").eq("company_id", profile.company_id).eq("active", true).order("name"),
-      supabase.from("seller_commission_rules").select("id,commission_seller_id,source_type,item_key,product_id,service_type,rate_percent,seller:commission_sellers!seller_commission_rules_commission_seller_id_fkey(name),product:products(name)").eq("company_id", profile.company_id).eq("active", true).order("source_type").order("item_key"),
+      supabase.from("service_catalog").select("id,name").eq("company_id", profile.company_id).eq("active", true).order("name"),
+      supabase.from("seller_commission_rules").select("id,commission_seller_id,source_type,item_key,product_id,service_catalog_id,service_type,rate_percent,seller:commission_sellers!seller_commission_rules_commission_seller_id_fkey(name),product:products(name),catalog_service:service_catalog(name)").eq("company_id", profile.company_id).eq("active", true).order("source_type").order("item_key"),
       supabase.from("companies").select("service_segment").eq("id", profile.company_id).maybeSingle()
     ]);
     sellers = (sellerData || []) as Seller[];
     profiles = (profileData || []) as Profile[];
     products = (productData || []) as Product[];
+    catalogServices = (catalogServiceData || []) as CatalogService[];
     rules = (ruleData || []) as Rule[];
     segment = (company?.service_segment || "tecnologia") as ServiceSegment;
   }
@@ -157,10 +163,11 @@ export default async function VendedoresPage({ searchParams }: { searchParams?: 
                 {rules.length ? rules.map((rule) => {
                   const seller = single(rule.seller);
                   const product = single(rule.product);
+                  const catalogService = single(rule.catalog_service);
                   const item = rule.item_key === "*"
                     ? "Todos (padrao)"
                     : rule.source_type === "venda"
-                      ? product?.name || "Produto"
+                      ? product?.name || catalogService?.name || "Item de venda"
                       : serviceLabels.get(rule.service_type || "") || rule.service_type;
                   return (
                     <tr key={rule.id}>
@@ -175,11 +182,13 @@ export default async function VendedoresPage({ searchParams }: { searchParams?: 
                             sellerId: rule.commission_seller_id,
                             sourceType: rule.source_type,
                             productId: rule.product_id,
+                            catalogServiceId: rule.service_catalog_id,
                             serviceType: rule.service_type,
                             ratePercent: rule.rate_percent
                           }}
                           sellers={sellerOptions}
                           products={products}
+                          catalogServices={catalogServices}
                           serviceTypes={serviceTypeOptions[segment] || serviceTypeOptions.tecnologia}
                         />
                       </td>
@@ -195,6 +204,7 @@ export default async function VendedoresPage({ searchParams }: { searchParams?: 
           <SellerRuleForm
             sellers={activeSellers.map((seller) => ({ id: seller.id, name: seller.name }))}
             products={products}
+            catalogServices={catalogServices}
             serviceTypes={serviceTypeOptions[segment] || serviceTypeOptions.tecnologia}
           />
         </section>

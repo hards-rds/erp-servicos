@@ -824,6 +824,35 @@ tbody tr:last-child td {
   padding: 0 6px;
 }
 
+.segmented-control {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #08090b;
+}
+
+.segmented-control button {
+  min-width: 0;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.segmented-control button[aria-pressed="true"] {
+  background: var(--accent);
+  color: #090a0c;
+}
+
 .checkbox-row {
   display: flex;
   grid-template-columns: none;

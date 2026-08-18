@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { calculateSaleAmounts, saleItemMovesStock, type SaleItemType } from "@/domains/sales/items";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { resolveSellerCommissionRate, syncSourceCommission } from "@/server/services/comissoes-service";
 
@@ -41,7 +42,9 @@ export async function POST(request: NextRequest) {
   if (!profile?.company_id) return redirectWith(request, "profile_error");
 
   const formData = await request.formData();
-  const productId = readString(formData, "productId");
+  const itemType = readString(formData, "itemType") as SaleItemType;
+  const productId = readString(formData, "productId") || null;
+  const catalogServiceId = readString(formData, "catalogServiceId") || null;
   const clientId = readString(formData, "clientId") || null;
   const quantity = parseQuantity(readString(formData, "quantity"));
   const unitPrice = parseMoney(readString(formData, "unitPrice"));
@@ -51,21 +54,47 @@ export async function POST(request: NextRequest) {
   const sellerId = readString(formData, "sellerId") || null;
 
   if (
-    !productId || !quantity || quantity <= 0 || unitPrice === null || unitPrice < 0 || discount < 0 ||
+    !["produto", "servico_catalogo", "servico_avulso"].includes(itemType) ||
+    !quantity || quantity <= 0 || unitPrice === null || unitPrice < 0 || discount < 0 ||
     !["aberta", "faturada", "recebida"].includes(status)
   ) {
     return redirectWith(request, "invalid");
   }
 
-  const { data: product } = await supabase
-    .from("products")
-    .select("id,name,current_stock")
-    .eq("id", productId)
-    .eq("company_id", profile.company_id)
-    .eq("active", true)
-    .maybeSingle();
+  let product: { id: string; name: string; current_stock: number | string } | null = null;
+  let catalogService: { id: string; name: string; description: string | null } | null = null;
+  let itemName = readString(formData, "description");
+  let commissionItemKey = "*";
 
-  if (!product) return redirectWith(request, "invalid");
+  if (itemType === "produto") {
+    if (!productId || catalogServiceId) return redirectWith(request, "invalid");
+    const { data } = await supabase
+      .from("products")
+      .select("id,name,current_stock")
+      .eq("id", productId)
+      .eq("company_id", profile.company_id)
+      .eq("active", true)
+      .maybeSingle();
+    product = data;
+    if (!product) return redirectWith(request, "invalid");
+    itemName ||= product.name;
+    commissionItemKey = product.id;
+  } else if (itemType === "servico_catalogo") {
+    if (!catalogServiceId || productId) return redirectWith(request, "invalid");
+    const { data } = await supabase
+      .from("service_catalog")
+      .select("id,name,description")
+      .eq("id", catalogServiceId)
+      .eq("company_id", profile.company_id)
+      .eq("active", true)
+      .maybeSingle();
+    catalogService = data;
+    if (!catalogService) return redirectWith(request, "invalid");
+    itemName ||= catalogService.description || catalogService.name;
+    commissionItemKey = catalogService.id;
+  } else {
+    if (productId || catalogServiceId || !itemName) return redirectWith(request, "invalid");
+  }
 
   let commissionRate: number | null = null;
   if (sellerId) {
@@ -74,7 +103,7 @@ export async function POST(request: NextRequest) {
       companyId: profile.company_id,
       sellerId,
       sourceType: "venda",
-      itemKey: product.id
+      itemKey: commissionItemKey
     });
     if (commissionRule.error || commissionRule.ratePercent === null) {
       return redirectWith(request, "commission_rule_missing");
@@ -82,12 +111,11 @@ export async function POST(request: NextRequest) {
     commissionRate = commissionRule.ratePercent;
   }
 
-  const currentStock = Number(product.current_stock || 0);
-  if (currentStock < quantity) return redirectWith(request, "stock_insufficient");
+  const currentStock = product ? Number(product.current_stock || 0) : 0;
+  if (product && currentStock < quantity) return redirectWith(request, "stock_insufficient");
 
-  const grossAmount = quantity * unitPrice;
-  const netAmount = Math.max(0, grossAmount - discount);
-  const description = readString(formData, "description") || `Venda - ${product.name}`;
+  const { grossAmount, netAmount } = calculateSaleAmounts(quantity, unitPrice, discount);
+  const description = itemName;
 
   const { data: sale, error: saleError } = await supabase.from("sales").insert({
     company_id: profile.company_id,
@@ -108,8 +136,10 @@ export async function POST(request: NextRequest) {
 
   const { error: itemError } = await supabase.from("sale_items").insert({
     sale_id: sale.id,
-    product_id: product.id,
-    description: product.name,
+    item_type: itemType,
+    product_id: product?.id || null,
+    service_catalog_id: catalogService?.id || null,
+    description,
     quantity,
     unit_price: unitPrice,
     total_amount: grossAmount
@@ -117,30 +147,32 @@ export async function POST(request: NextRequest) {
 
   if (itemError) return redirectWith(request, "error");
 
-  const nextStock = currentStock - quantity;
-  const { error: productError } = await supabase
-    .from("products")
-    .update({
-      current_stock: nextStock,
-      updated_by: profile.id,
-      updated_at: new Date().toISOString()
-    })
-    .eq("id", product.id)
-    .eq("company_id", profile.company_id);
+  if (saleItemMovesStock(itemType) && product) {
+    const nextStock = currentStock - quantity;
+    const { error: productError } = await supabase
+      .from("products")
+      .update({
+        current_stock: nextStock,
+        updated_by: profile.id,
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", product.id)
+      .eq("company_id", profile.company_id);
 
-  if (productError) return redirectWith(request, "error");
+    if (productError) return redirectWith(request, "error");
 
-  await supabase.from("stock_movements").insert({
-    company_id: profile.company_id,
-    product_id: product.id,
-    sale_id: sale.id,
-    movement_date: saleDate,
-    type: "saida",
-    quantity,
-    unit_cost: 0,
-    reason: `Venda ${sale.id.slice(0, 8)}`,
-    created_by: profile.id
-  });
+    await supabase.from("stock_movements").insert({
+      company_id: profile.company_id,
+      product_id: product.id,
+      sale_id: sale.id,
+      movement_date: saleDate,
+      type: "saida",
+      quantity,
+      unit_cost: 0,
+      reason: `Venda ${sale.id.slice(0, 8)}`,
+      created_by: profile.id
+    });
+  }
 
   const idempotencyKey = `sale:${sale.id}`;
   const { data: entry } = await supabase.from("financial_entries").insert({
