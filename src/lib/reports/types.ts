@@ -1,4 +1,4 @@
-export const REPORT_KEYS = ["financeiro", "saidas", "vendas", "estoque", "servicos", "clientes", "fiscal"] as const;
+export const REPORT_KEYS = ["financeiro", "saidas", "comissoes", "vendas", "estoque", "servicos", "clientes", "fiscal"] as const;
 
 export type ReportKey = (typeof REPORT_KEYS)[number];
 
@@ -34,6 +34,7 @@ export type ReportResult = {
 export const reportLabels: Record<ReportKey, string> = {
   financeiro: "Entradas",
   saidas: "Saidas",
+  comissoes: "Comissoes",
   vendas: "Vendas",
   estoque: "Estoque",
   servicos: "Servicos",
@@ -58,6 +59,12 @@ export const reportStatuses: Record<ReportKey, Array<{ value: string; label: str
     { value: "vencido", label: "Vencido" },
     { value: "cancelado", label: "Cancelado" },
     { value: "conciliado", label: "Conciliado" }
+  ],
+  comissoes: [
+    { value: "pendente", label: "Pendente" },
+    { value: "aprovada", label: "Aprovada" },
+    { value: "paga", label: "Paga" },
+    { value: "cancelada", label: "Cancelada" }
   ],
   vendas: [
     { value: "aberta", label: "Aberta" },

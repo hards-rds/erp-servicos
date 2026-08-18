@@ -246,6 +246,83 @@ async function payablesReport(filters: ReportFilters): Promise<ReportResult> {
   };
 }
 
+async function commissionsReport(filters: ReportFilters): Promise<ReportResult> {
+  type Row = {
+    id: string;
+    description: string;
+    source_type: string;
+    reference_date: string;
+    due_date: string;
+    base_amount: number | string;
+    rate_percent: number | string;
+    commission_amount: number | string;
+    status: string;
+    paid_at: string | null;
+    payment_method: string | null;
+    seller: { name: string | null; email: string } | Array<{ name: string | null; email: string }> | null;
+  };
+
+  const { supabase, companyId } = await getReportContext();
+  let query = supabase
+    .from("commissions")
+    .select("id,description,source_type,reference_date,due_date,base_amount,rate_percent,commission_amount,status,paid_at,payment_method,seller:profiles!commissions_seller_id_fkey(name,email)")
+    .eq("company_id", companyId)
+    .gte("reference_date", filters.from)
+    .lte("reference_date", filters.to)
+    .order("reference_date", { ascending: false })
+    .limit(2000);
+  if (filters.status) query = query.eq("status", filters.status);
+  const { data, error } = await query;
+  if (error) throw error;
+  const rows = searchRows((data || []) as Row[], filters.search, (row) => {
+    const seller = Array.isArray(row.seller) ? row.seller[0] : row.seller;
+    return [row.description, row.source_type, row.status, seller?.name, seller?.email];
+  });
+  const active = rows.filter((row) => row.status !== "cancelada");
+  const pending = rows.filter((row) => row.status === "pendente");
+  const approved = rows.filter((row) => row.status === "aprovada");
+  const paid = rows.filter((row) => row.status === "paga");
+
+  return {
+    title: "Comissoes de vendedores",
+    description: "Comissoes por vendedor, origem, percentual, vencimento e pagamento.",
+    dateFieldLabel: "Data de referencia",
+    metrics: [
+      { label: "Total gerado", value: formatMoney(active.reduce((sum, row) => sum + Number(row.commission_amount), 0)), detail: `${active.length} comissoes` },
+      { label: "Pendente", value: formatMoney(pending.reduce((sum, row) => sum + Number(row.commission_amount), 0)), detail: `${pending.length} aguardando aprovacao` },
+      { label: "Aprovado", value: formatMoney(approved.reduce((sum, row) => sum + Number(row.commission_amount), 0)), detail: `${approved.length} contas a pagar` },
+      { label: "Pago", value: formatMoney(paid.reduce((sum, row) => sum + Number(row.commission_amount), 0)), detail: `${paid.length} pagamentos` }
+    ],
+    columns: [
+      { key: "date", label: "Referencia" },
+      { key: "seller", label: "Vendedor" },
+      { key: "description", label: "Descricao" },
+      { key: "source", label: "Origem" },
+      { key: "base", label: "Base", align: "right" },
+      { key: "rate", label: "Percentual", align: "right" },
+      { key: "amount", label: "Comissao", align: "right" },
+      { key: "dueDate", label: "Vencimento" },
+      { key: "paidAt", label: "Pagamento" },
+      { key: "status", label: "Status" }
+    ],
+    rows: rows.map((row) => {
+      const seller = Array.isArray(row.seller) ? row.seller[0] : row.seller;
+      return {
+        date: formatDate(row.reference_date),
+        seller: seller?.name || seller?.email || "-",
+        description: row.description,
+        source: labelStatus(row.source_type),
+        base: formatMoney(row.base_amount),
+        rate: `${formatNumber(row.rate_percent, 4)}%`,
+        amount: formatMoney(row.commission_amount),
+        dueDate: formatDate(row.due_date),
+        paidAt: row.paid_at ? `${formatDate(row.paid_at)} · ${labelStatus(row.payment_method || "-")}` : "-",
+        status: labelStatus(row.status)
+      };
+    })
+  };
+}
+
 async function inventoryReport(filters: ReportFilters): Promise<ReportResult> {
   type Row = {
     id: string;
@@ -494,6 +571,7 @@ async function fiscalReport(filters: ReportFilters): Promise<ReportResult> {
 export async function getReportData(filters: ReportFilters) {
   switch (filters.report) {
     case "saidas": return payablesReport(filters);
+    case "comissoes": return commissionsReport(filters);
     case "vendas": return salesReport(filters);
     case "estoque": return inventoryReport(filters);
     case "servicos": return servicesReport(filters);

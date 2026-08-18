@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { syncSourceCommission } from "@/server/services/comissoes-service";
 
 function readString(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
@@ -47,8 +48,17 @@ export async function POST(request: NextRequest) {
   const discount = parseMoney(readString(formData, "discountAmount")) || 0;
   const saleDate = readString(formData, "saleDate") || new Date().toISOString().slice(0, 10);
   const status = readString(formData, "status") || "faturada";
+  const sellerId = readString(formData, "sellerId") || null;
+  const commissionRate = readString(formData, "commissionRate")
+    ? parseMoney(readString(formData, "commissionRate"))
+    : null;
 
-  if (!productId || !quantity || quantity <= 0 || unitPrice === null || unitPrice < 0 || discount < 0 || !["aberta", "faturada", "recebida"].includes(status)) {
+  if (
+    !productId || !quantity || quantity <= 0 || unitPrice === null || unitPrice < 0 || discount < 0 ||
+    !["aberta", "faturada", "recebida"].includes(status) ||
+    (sellerId && (commissionRate === null || commissionRate <= 0 || commissionRate > 100)) ||
+    (!sellerId && commissionRate !== null && commissionRate > 0)
+  ) {
     return redirectWith(request, "invalid");
   }
 
@@ -150,6 +160,21 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString()
     }).eq("id", sale.id).eq("company_id", profile.company_id);
   }
+
+  const commissionResult = await syncSourceCommission({
+    supabase,
+    companyId: profile.company_id,
+    profileId: profile.id,
+    sellerId,
+    sourceType: "venda",
+    sourceId: sale.id,
+    referenceDate: saleDate,
+    description: `Comissao - ${description}`,
+    baseAmount: netAmount,
+    ratePercent: commissionRate,
+    dueDate: readString(formData, "commissionDueDate") || saleDate
+  });
+  if (commissionResult.error) return redirectWith(request, "commission_error");
 
   return redirectWith(request, "created");
 }

@@ -14,6 +14,11 @@ import {
 import { interChargeIdempotencyKey, validateChargeDraft } from "../src/domains/billing/inter.ts";
 import { assertCannotChangeOwnElevation, can } from "../src/domains/users/permissions.ts";
 import { serviceDeletionBlock } from "../src/domains/services/deletion.ts";
+import {
+  assertCommissionTransition,
+  calculateCommissionAmount,
+  canTransitionCommission
+} from "../src/domains/finance/commissions.ts";
 
 test("valida documentos brasileiros", () => {
   assert.equal(isValidCpf("529.982.247-25"), true);
@@ -64,6 +69,14 @@ test("consolida fluxo de caixa previsto e realizado", () => {
 
 test("saida paga exige data e valor", () => {
   assert.throws(() => assertPayableCanBeMarkedPaid({ amountCents: 0 }), /data de pagamento/);
+});
+
+test("calcula comissao e controla seu fluxo de aprovacao", () => {
+  assert.equal(calculateCommissionAmount(1175, 3.5), 41.13);
+  assert.equal(canTransitionCommission("pendente", "aprovada"), true);
+  assert.equal(canTransitionCommission("aprovada", "paga"), true);
+  assert.equal(canTransitionCommission("paga", "cancelada"), false);
+  assert.throws(() => assertCommissionTransition("pendente", "paga"), /Transicao/);
 });
 
 test("valida NFS-e e chave idempotente", () => {

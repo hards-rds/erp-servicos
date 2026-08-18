@@ -17,6 +17,7 @@ import {
   ClipboardList,
   FilePlus2,
   FileText,
+  HandCoins,
   LayoutDashboard,
   LogOut,
   Mail,
@@ -60,6 +61,7 @@ const nav = [
     items: [
       { href: "/financeiro/entradas", label: "Entradas", icon: Banknote },
       { href: "/financeiro/saidas", label: "Saidas", icon: WalletCards },
+      { href: "/financeiro/comissoes", label: "Comissoes", icon: HandCoins },
       { href: "/financeiro/fluxo-de-caixa", label: "Fluxo de Caixa", icon: ChartNoAxesCombined },
       { href: "/financeiro/conciliacao", label: "Conciliacao", icon: ShieldCheck },
       { href: "/financeiro/boletos-cobrancas", label: "Boletos/Cobrancas", icon: Barcode }

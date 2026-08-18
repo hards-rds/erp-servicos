@@ -18,6 +18,13 @@ type ServiceRecord = {
   status: string;
   fiscal_service_data: Record<string, unknown> | null;
   notes: string | null;
+  commissions: Array<{
+    id: string;
+    seller_id: string;
+    rate_percent: number | string;
+    due_date: string;
+    status: string;
+  }> | null;
   clients: {
     legal_name: string;
     document: string;
@@ -35,6 +42,12 @@ type ClientOption = {
   status: string;
 };
 
+type SellerOption = {
+  id: string;
+  name: string | null;
+  email: string;
+};
+
 const statusMessages: Record<string, { kind: "success" | "error"; text: string }> = {
   created: { kind: "success", text: "Servico cadastrado com sucesso." },
   updated: { kind: "success", text: "Servico atualizado com sucesso." },
@@ -50,6 +63,7 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   delete_error: { kind: "error", text: "Nao foi possivel excluir o servico agora." },
   update_error: { kind: "error", text: "Nao foi possivel atualizar o servico agora." },
   error: { kind: "error", text: "Nao foi possivel cadastrar o servico agora." },
+  commission_error: { kind: "error", text: "O servico foi salvo, mas nao foi possivel atualizar a comissao." },
   profile_error: { kind: "error", text: "Seu usuario ainda nao esta vinculado a uma empresa." }
 };
 
@@ -133,11 +147,13 @@ function getDetailSummary(service: ServiceRecord) {
 
 function ServiceForm({
   clients,
+  sellers,
   segment,
   typeOptions,
   service
 }: {
   clients: ClientOption[];
+  sellers: SellerOption[];
   segment: ServiceSegment;
   typeOptions: { value: string; label: string }[];
   service?: ServiceRecord;
@@ -145,6 +161,7 @@ function ServiceForm({
   const today = new Date().toISOString().slice(0, 10);
   const details = service?.fiscal_service_data || {};
   const isEdit = Boolean(service);
+  const commission = service?.commissions?.[0];
 
   return (
     <form className="form-stack" action="/api/cadastros/servicos" method="post">
@@ -205,6 +222,31 @@ function ServiceForm({
           <option value="cancelado">Cancelado</option>
         </select>
       </label>
+      <fieldset className="checkbox-panel">
+        <legend>Comissao do vendedor</legend>
+        <label>
+          Vendedor
+          <select name="sellerId" defaultValue={commission?.seller_id || ""}>
+            <option value="">Sem comissao</option>
+            {sellers.map((seller) => (
+              <option key={seller.id} value={seller.id}>{seller.name || seller.email}</option>
+            ))}
+          </select>
+        </label>
+        <div className="form-grid">
+          <label>
+            Percentual
+            <input name="commissionRate" inputMode="decimal" defaultValue={moneyInputValue(commission?.rate_percent)} placeholder="Ex.: 5,00" />
+          </label>
+          <label>
+            Vencimento da comissao
+            <input name="commissionDueDate" type="date" defaultValue={commission?.due_date || service?.due_date || today} />
+          </label>
+        </div>
+        {commission && commission.status !== "pendente" ? (
+          <small className="muted">Comissao {commission.status}; valores financeiros ja consolidados nao serao alterados.</small>
+        ) : null}
+      </fieldset>
       {segment === "tecnologia" ? (
         <fieldset className="checkbox-panel">
           <legend>Dados de tecnologia</legend>
@@ -345,19 +387,17 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
     : { data: null };
   const segment = ((company?.service_segment || "tecnologia") as ServiceSegment);
   const typeOptions = serviceTypeOptions[segment] || serviceTypeOptions.tecnologia;
-  const { data: clients } = await supabase
-    .from("clients")
-    .select("id,legal_name,document,status")
-    .eq("status", "ativo")
-    .order("legal_name", { ascending: true });
-  const { data: services } = await supabase
-    .from("service_records")
-    .select("id,client_id,service_description,service_type,amount,service_date,due_date,status,fiscal_service_data,notes,clients(legal_name,document)")
-    .order("service_date", { ascending: false })
-    .limit(50);
+  const [{ data: clients }, { data: services }, { data: sellers }] = profile?.company_id
+    ? await Promise.all([
+      supabase.from("clients").select("id,legal_name,document,status").eq("company_id", profile.company_id).eq("status", "ativo").order("legal_name"),
+      supabase.from("service_records").select("id,client_id,service_description,service_type,amount,service_date,due_date,status,fiscal_service_data,notes,clients(legal_name,document),commissions(id,seller_id,rate_percent,due_date,status)").eq("company_id", profile.company_id).order("service_date", { ascending: false }).limit(50),
+      supabase.from("profiles").select("id,name,email").eq("company_id", profile.company_id).eq("active", true).order("name")
+    ])
+    : [{ data: [] }, { data: [] }, { data: [] }];
   const message = params?.status ? statusMessages[params.status] : null;
   const allClients = (clients || []) as ClientOption[];
   const allServices = (services || []) as ServiceRecord[];
+  const allSellers = (sellers || []) as SellerOption[];
 
   return (
     <>
@@ -426,7 +466,7 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
         </section>
         <section className="form-panel">
           <h2>Novo servico</h2>
-          <ServiceForm clients={allClients} segment={segment} typeOptions={typeOptions} />
+          <ServiceForm clients={allClients} sellers={allSellers} segment={segment} typeOptions={typeOptions} />
         </section>
       </div>
       <section className="table-panel">
@@ -445,7 +485,7 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
                       </span>
                     </span>
                   </summary>
-                  <ServiceForm clients={allClients} segment={segment} typeOptions={typeOptions} service={service} />
+                  <ServiceForm clients={allClients} sellers={allSellers} segment={segment} typeOptions={typeOptions} service={service} />
                 </details>
               );
             })

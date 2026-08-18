@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceDeletionBlock } from "@/domains/services/deletion";
 import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
+import { syncSourceCommission } from "@/server/services/comissoes-service";
 
 function readString(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
@@ -184,6 +185,10 @@ export async function POST(request: NextRequest) {
   const clientId = readString(formData, "clientId");
   const serviceDescription = readString(formData, "serviceDescription");
   const amount = parseMoney(readString(formData, "amount"));
+  const sellerId = readString(formData, "sellerId") || null;
+  const commissionRate = readString(formData, "commissionRate")
+    ? parseMoney(readString(formData, "commissionRate"))
+    : null;
 
   if (action === "delete") {
     if (!serviceId) {
@@ -233,7 +238,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!clientId || !serviceDescription || amount === null || amount < 0) {
+  if (
+    !clientId || !serviceDescription || amount === null || amount < 0 ||
+    (sellerId && (commissionRate === null || commissionRate <= 0 || commissionRate > 100)) ||
+    (!sellerId && commissionRate !== null && commissionRate > 0)
+  ) {
     return NextResponse.redirect(new URL("/cadastros/servicos?status=invalid", request.url), 303);
   }
 
@@ -270,6 +279,23 @@ export async function POST(request: NextRequest) {
         profileId: context.profileId,
         payload
       });
+      const commissionResult = await syncSourceCommission({
+        supabase,
+        companyId: context.companyId,
+        profileId: context.profileId,
+        sellerId,
+        sourceType: "servico",
+        sourceId: serviceId,
+        referenceDate: payload.service_date,
+        description: `Comissao - ${payload.service_description}`,
+        baseAmount: payload.amount,
+        ratePercent: commissionRate,
+        dueDate: readString(formData, "commissionDueDate") || payload.due_date || payload.service_date,
+        canceled: payload.status === "cancelado"
+      });
+      if (commissionResult.error) {
+        return NextResponse.redirect(new URL("/cadastros/servicos?status=commission_error", request.url), 303);
+      }
     }
 
     return NextResponse.redirect(new URL(`/cadastros/servicos?status=${error ? "update_error" : "updated"}`, request.url), 303);
@@ -289,6 +315,23 @@ export async function POST(request: NextRequest) {
       profileId: context.profileId,
       payload
     });
+    const commissionResult = await syncSourceCommission({
+      supabase,
+      companyId: context.companyId,
+      profileId: context.profileId,
+      sellerId,
+      sourceType: "servico",
+      sourceId: createdService.id,
+      referenceDate: payload.service_date,
+      description: `Comissao - ${payload.service_description}`,
+      baseAmount: payload.amount,
+      ratePercent: commissionRate,
+      dueDate: readString(formData, "commissionDueDate") || payload.due_date || payload.service_date,
+      canceled: payload.status === "cancelado"
+    });
+    if (commissionResult.error) {
+      return NextResponse.redirect(new URL("/cadastros/servicos?status=commission_error", request.url), 303);
+    }
   }
 
   return NextResponse.redirect(new URL(`/cadastros/servicos?status=${error ? "error" : "created"}`, request.url), 303);

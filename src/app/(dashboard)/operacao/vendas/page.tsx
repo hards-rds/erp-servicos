@@ -19,6 +19,12 @@ type ProductRow = {
   unit: string;
 };
 
+type SellerRow = {
+  id: string;
+  name: string | null;
+  email: string;
+};
+
 type SaleRow = {
   id: string;
   sale_date: string;
@@ -33,6 +39,7 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   invalid: { kind: "error", text: "Revise produto, quantidade e valor da venda." },
   stock_insufficient: { kind: "error", text: "Estoque insuficiente para concluir a venda." },
   error: { kind: "error", text: "Nao foi possivel registrar a venda agora." },
+  commission_error: { kind: "error", text: "A venda foi registrada, mas nao foi possivel gerar a comissao." },
   profile_error: { kind: "error", text: "Seu usuario ainda nao esta vinculado a uma empresa." }
 };
 
@@ -56,26 +63,24 @@ function formatPriceInput(value: number | string) {
 export default async function VendasPage({ searchParams }: VendasPageProps) {
   const params = await searchParams;
   const supabase = await createServerSupabaseClient();
-  const { data: clients } = await supabase
-    .from("clients")
-    .select("id,legal_name")
-    .eq("status", "ativo")
-    .order("legal_name", { ascending: true });
-  const { data: products } = await supabase
-    .from("products")
-    .select("id,name,sale_price,current_stock,unit")
-    .eq("active", true)
-    .gt("current_stock", 0)
-    .order("name", { ascending: true });
-  const { data: sales } = await supabase
-    .from("sales")
-    .select("id,sale_date,description,net_amount,status,clients(legal_name)")
-    .order("sale_date", { ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(50);
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data: profile } = user
+    ? await supabase.from("profiles").select("company_id").eq("id", user.id).maybeSingle()
+    : { data: null };
+  const companyId = profile?.company_id;
+
+  const [{ data: clients }, { data: products }, { data: sales }, { data: sellers }] = companyId
+    ? await Promise.all([
+      supabase.from("clients").select("id,legal_name").eq("company_id", companyId).eq("status", "ativo").order("legal_name"),
+      supabase.from("products").select("id,name,sale_price,current_stock,unit").eq("company_id", companyId).eq("active", true).gt("current_stock", 0).order("name"),
+      supabase.from("sales").select("id,sale_date,description,net_amount,status,clients(legal_name)").eq("company_id", companyId).order("sale_date", { ascending: false }).order("created_at", { ascending: false }).limit(50),
+      supabase.from("profiles").select("id,name,email").eq("company_id", companyId).eq("active", true).order("name")
+    ])
+    : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }];
   const allClients = (clients || []) as ClientRow[];
   const allProducts = (products || []) as ProductRow[];
   const allSales = (sales || []) as SaleRow[];
+  const allSellers = (sellers || []) as SellerRow[];
   const message = params?.status ? statusMessages[params.status] : null;
   const today = new Date().toISOString().slice(0, 10);
 
@@ -190,6 +195,28 @@ export default async function VendasPage({ searchParams }: VendasPageProps) {
               Forma de pagamento
               <input name="paymentMethod" placeholder="Pix, cartao, boleto, dinheiro..." />
             </label>
+            <fieldset className="checkbox-panel">
+              <legend>Comissao do vendedor</legend>
+              <label>
+                Vendedor
+                <select name="sellerId" defaultValue="">
+                  <option value="">Sem comissao</option>
+                  {allSellers.map((seller) => (
+                    <option key={seller.id} value={seller.id}>{seller.name || seller.email}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="form-grid">
+                <label>
+                  Percentual
+                  <input name="commissionRate" inputMode="decimal" placeholder="Ex.: 5,00" />
+                </label>
+                <label>
+                  Vencimento da comissao
+                  <input name="commissionDueDate" type="date" defaultValue={today} />
+                </label>
+              </div>
+            </fieldset>
             <label>
               Observacoes
               <textarea name="notes" placeholder="Entrega, condicoes comerciais ou observacoes internas" />
