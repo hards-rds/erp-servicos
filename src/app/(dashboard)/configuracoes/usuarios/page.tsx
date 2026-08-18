@@ -78,20 +78,26 @@ export default async function UsuariosPage({
     data: { user }
   } = await supabase.auth.getUser();
   const { data: profile } = user
-    ? await supabase.from("profiles").select("name,email,role,active").eq("id", user.id).maybeSingle()
+    ? await supabase.from("profiles").select("name,email,role,active,company_id").eq("id", user.id).maybeSingle()
     : { data: null };
   const role = profile?.role || "usuario";
   const active = profile?.active !== false;
   const isMaster = ["master", "system_admin"].includes(role) && active;
-  const { data: profiles } = await supabase
-    .from("profiles")
-    .select("id,name,email,role,active,user_groups(groups(id,name))")
-    .order("created_at", { ascending: true });
-  const { data: groups } = await supabase
-    .from("groups")
-    .select("id,name,description,active")
-    .eq("active", true)
-    .order("name", { ascending: true });
+  const [{ data: profiles }, { data: groups }] = profile?.company_id
+    ? await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id,name,email,role,active,user_groups(groups(id,name))")
+        .eq("company_id", profile.company_id)
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("groups")
+        .select("id,name,description,active")
+        .eq("company_id", profile.company_id)
+        .eq("active", true)
+        .order("name", { ascending: true })
+    ])
+    : [{ data: [] }, { data: [] }];
   const allProfiles = (profiles || []) as ProfileRow[];
   const allGroups = (groups || []) as GroupRow[];
 

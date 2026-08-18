@@ -32,13 +32,31 @@ async function getMasterActor() {
   return { actor, error: null };
 }
 
-async function replaceUserGroups(service: ReturnType<typeof createServiceClient>, userId: string, groupIds: string[]) {
+async function replaceUserGroups(
+  service: ReturnType<typeof createServiceClient>,
+  userId: string,
+  companyId: string,
+  groupIds: string[]
+) {
+  const uniqueGroupIds = [...new Set(groupIds)];
+  if (uniqueGroupIds.length) {
+    const { data: validGroups, error: groupLookupError } = await service
+      .from("groups")
+      .select("id")
+      .eq("company_id", companyId)
+      .in("id", uniqueGroupIds);
+
+    if (groupLookupError || validGroups?.length !== uniqueGroupIds.length) {
+      return groupLookupError || new Error("Grupo de acesso fora da empresa ativa.");
+    }
+  }
+
   await service.from("user_groups").delete().eq("user_id", userId);
 
-  if (!groupIds.length) return null;
+  if (!uniqueGroupIds.length) return null;
 
   const { error } = await service.from("user_groups").insert(
-    groupIds.map((groupId) => ({
+    uniqueGroupIds.map((groupId) => ({
       user_id: userId,
       group_id: groupId
     }))
@@ -109,7 +127,7 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString()
     });
 
-    const groupError = await replaceUserGroups(service, created.user.id, groupIds);
+    const groupError = await replaceUserGroups(service, created.user.id, actor.company_id, groupIds);
     return redirectWith(request, groupError ? "group_error" : "created");
   }
 
@@ -118,6 +136,13 @@ export async function POST(request: NextRequest) {
     const active = String(formData.get("active") || "") === "true";
 
     if (!userId || userId === actor.id) return redirectWith(request, "invalid_status");
+    const { data: targetUser } = await service
+      .from("profiles")
+      .select("id")
+      .eq("id", userId)
+      .eq("company_id", actor.company_id)
+      .maybeSingle();
+    if (!targetUser) return redirectWith(request, "invalid_status");
 
     const { error } = await service
       .from("profiles")
@@ -146,6 +171,13 @@ export async function POST(request: NextRequest) {
     const groupIds = formData.getAll("groupIds").map(String).filter(Boolean);
 
     if (!userId || !["usuario", "admin", "master"].includes(role)) return redirectWith(request, "invalid");
+    const { data: targetUser } = await service
+      .from("profiles")
+      .select("id")
+      .eq("id", userId)
+      .eq("company_id", actor.company_id)
+      .maybeSingle();
+    if (!targetUser) return redirectWith(request, "invalid");
 
     const { error: profileError } = await service
       .from("profiles")
@@ -171,7 +203,7 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString()
     });
 
-    const groupError = await replaceUserGroups(service, userId, groupIds);
+    const groupError = await replaceUserGroups(service, userId, actor.company_id, groupIds);
     return redirectWith(request, groupError ? "group_error" : "updated");
   }
 

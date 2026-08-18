@@ -54,11 +54,18 @@ export default async function EntradasPage({ searchParams }: EntradasPageProps) 
   const params = await searchParams;
   const message = params?.status ? statusMessages[params.status] : null;
   const supabase = await createServerSupabaseClient();
-  const { data: entries } = await supabase
-    .from("financial_entries")
-    .select("id,description,competence,due_date,received_at,received_amount,net_amount,payment_method,status,clients(legal_name)")
-    .order("due_date", { ascending: false })
-    .limit(100);
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data: profile } = user
+    ? await supabase.from("profiles").select("company_id").eq("id", user.id).maybeSingle()
+    : { data: null };
+  const { data: entries } = profile?.company_id
+    ? await supabase
+      .from("financial_entries")
+      .select("id,description,competence,due_date,received_at,received_amount,net_amount,payment_method,status,clients(legal_name)")
+      .eq("company_id", profile.company_id)
+      .order("due_date", { ascending: false })
+      .limit(100)
+    : { data: [] };
   const allEntries = (entries || []) as EntryRow[];
 
   return (

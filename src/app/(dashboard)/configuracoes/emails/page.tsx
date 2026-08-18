@@ -16,10 +16,17 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
 export default async function EmailsPage({ searchParams }: EmailsPageProps) {
   const params = await searchParams;
   const supabase = await createServerSupabaseClient();
-  const { data: settings } = await supabase
-    .from("email_settings")
-    .select("provider,email_from,reply_to")
-    .maybeSingle();
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data: profile } = user
+    ? await supabase.from("profiles").select("company_id").eq("id", user.id).maybeSingle()
+    : { data: null };
+  const { data: settings } = profile?.company_id
+    ? await supabase
+      .from("email_settings")
+      .select("provider,email_from,reply_to")
+      .eq("company_id", profile.company_id)
+      .maybeSingle()
+    : { data: null };
   const message = params?.status ? statusMessages[params.status] : null;
 
   return (

@@ -1,7 +1,7 @@
 import { TenantActions } from "@/components/admin/tenant-actions";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
 
 type TenantRow = {
   id: string;
@@ -80,7 +80,7 @@ export default async function TenantsPage({
   const isSystemAdmin = profile?.role === "system_admin" && profile.active !== false;
 
   const { data: tenants } = isSystemAdmin
-    ? await supabase
+    ? await createServiceClient()
       .from("tenants")
       .select("id,name,slug,plan,status,companies(id,name,document,service_segment,active),tenant_members(user_id,role,profile:profiles!tenant_members_user_id_fkey(id,name,email,role,active))")
       .order("created_at", { ascending: false })

@@ -65,17 +65,27 @@ function getStockTone(product: ProductRow) {
 export default async function EstoquePage({ searchParams }: EstoquePageProps) {
   const params = await searchParams;
   const supabase = await createServerSupabaseClient();
-  const { data: products } = await supabase
-    .from("products")
-    .select("id,sku,name,category,unit,cost_price,sale_price,current_stock,min_stock,active")
-    .order("name", { ascending: true })
-    .limit(100);
-  const { data: movements } = await supabase
-    .from("stock_movements")
-    .select("id,movement_date,type,quantity,reason,products(name,unit)")
-    .order("movement_date", { ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(50);
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data: profile } = user
+    ? await supabase.from("profiles").select("company_id").eq("id", user.id).maybeSingle()
+    : { data: null };
+  const [{ data: products }, { data: movements }] = profile?.company_id
+    ? await Promise.all([
+      supabase
+        .from("products")
+        .select("id,sku,name,category,unit,cost_price,sale_price,current_stock,min_stock,active")
+        .eq("company_id", profile.company_id)
+        .order("name", { ascending: true })
+        .limit(100),
+      supabase
+        .from("stock_movements")
+        .select("id,movement_date,type,quantity,reason,products(name,unit)")
+        .eq("company_id", profile.company_id)
+        .order("movement_date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(50)
+    ])
+    : [{ data: [] }, { data: [] }];
   const allProducts = (products || []) as ProductRow[];
   const allMovements = (movements || []) as MovementRow[];
   const message = params?.status ? statusMessages[params.status] : null;

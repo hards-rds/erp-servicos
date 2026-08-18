@@ -54,11 +54,18 @@ function getTone(status: string) {
 export default async function EmissaoNfsePage({ searchParams }: EmissaoNfsePageProps) {
   const params = await searchParams;
   const supabase = await createServerSupabaseClient();
-  const { data: documents } = await supabase
-    .from("nfse_documents")
-    .select("id,competence,service_amount,status,rejection_message,clients(legal_name),financial_entries(description,contract_id)")
-    .order("created_at", { ascending: false })
-    .limit(100);
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data: profile } = user
+    ? await supabase.from("profiles").select("company_id").eq("id", user.id).maybeSingle()
+    : { data: null };
+  const { data: documents } = profile?.company_id
+    ? await supabase
+      .from("nfse_documents")
+      .select("id,competence,service_amount,status,rejection_message,clients(legal_name),financial_entries(description,contract_id)")
+      .eq("company_id", profile.company_id)
+      .order("created_at", { ascending: false })
+      .limit(100)
+    : { data: [] };
   const allDocuments = (documents || []) as NfseRow[];
   const message = params?.status ? statusMessages[params.status] : null;
   const realProduction = process.env.NFSE_ENV === "production"

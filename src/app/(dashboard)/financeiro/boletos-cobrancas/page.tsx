@@ -37,11 +37,18 @@ function getTone(status: string) {
 
 export default async function BoletosCobrancasPage() {
   const supabase = await createServerSupabaseClient();
-  const { data: charges } = await supabase
-    .from("boleto_charges")
-    .select("id,external_id,status,financial_entries(description,due_date,net_amount)")
-    .order("created_at", { ascending: false })
-    .limit(100);
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data: profile } = user
+    ? await supabase.from("profiles").select("company_id").eq("id", user.id).maybeSingle()
+    : { data: null };
+  const { data: charges } = profile?.company_id
+    ? await supabase
+      .from("boleto_charges")
+      .select("id,external_id,status,financial_entries(description,due_date,net_amount)")
+      .eq("company_id", profile.company_id)
+      .order("created_at", { ascending: false })
+      .limit(100)
+    : { data: [] };
   const allCharges = (charges || []) as ChargeRow[];
 
   return (

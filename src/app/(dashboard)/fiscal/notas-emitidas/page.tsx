@@ -53,11 +53,18 @@ export default async function NotasEmitidasPage({ searchParams }: NotasEmitidasP
     permission_module: "fiscal.nfse",
     permission_action: "cancelar"
   });
-  const { data: documents } = await supabase
-    .from("nfse_documents")
-    .select("id,danfse_file_id,external_id,competence,service_amount,status,clients(legal_name,fiscal_email)")
-    .order("created_at", { ascending: false })
-    .limit(100);
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data: profile } = user
+    ? await supabase.from("profiles").select("company_id").eq("id", user.id).maybeSingle()
+    : { data: null };
+  const { data: documents } = profile?.company_id
+    ? await supabase
+      .from("nfse_documents")
+      .select("id,danfse_file_id,external_id,competence,service_amount,status,clients(legal_name,fiscal_email)")
+      .eq("company_id", profile.company_id)
+      .order("created_at", { ascending: false })
+      .limit(100)
+    : { data: [] };
   const allDocuments = (documents || []) as NfseRow[];
   const message = params?.status ? statusMessages[params.status] : null;
   const cancellationEnabled = process.env.NFSE_ENV === "production"

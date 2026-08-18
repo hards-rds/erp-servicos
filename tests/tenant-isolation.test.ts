@@ -1,0 +1,58 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+const tenantPages = [
+  "src/app/(dashboard)/cadastros/clientes/page.tsx",
+  "src/app/(dashboard)/cadastros/contratos/page.tsx",
+  "src/app/(dashboard)/cadastros/servicos/page.tsx",
+  "src/app/(dashboard)/configuracoes/emails/page.tsx",
+  "src/app/(dashboard)/configuracoes/usuarios/page.tsx",
+  "src/app/(dashboard)/dashboard/page.tsx",
+  "src/app/(dashboard)/financeiro/boletos-cobrancas/page.tsx",
+  "src/app/(dashboard)/financeiro/comissoes/page.tsx",
+  "src/app/(dashboard)/financeiro/comissoes/vendedores/page.tsx",
+  "src/app/(dashboard)/financeiro/entradas/page.tsx",
+  "src/app/(dashboard)/financeiro/fluxo-de-caixa/page.tsx",
+  "src/app/(dashboard)/financeiro/saidas/page.tsx",
+  "src/app/(dashboard)/fiscal/emissao-nfse/page.tsx",
+  "src/app/(dashboard)/fiscal/notas-emitidas/page.tsx",
+  "src/app/(dashboard)/operacao/estoque/page.tsx",
+  "src/app/(dashboard)/operacao/vendas/page.tsx"
+];
+
+test("paginas operacionais filtram explicitamente a empresa ativa", () => {
+  for (const file of tenantPages) {
+    const source = readFileSync(file, "utf8");
+    assert.match(source, /\.eq\("company_id",/, `${file} precisa filtrar company_id`);
+  }
+});
+
+test("RLS operacional nao concede acesso global ao system_admin", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260818184000_harden_tenant_isolation.sql",
+    "utf8"
+  );
+
+  assert.doesNotMatch(migration, /app_is_system_admin\(\)\s+or\s+public\.company_match/);
+  assert.match(migration, /select target_company_id = public\.app_current_company_id\(\)/);
+
+  for (const table of [
+    "clients",
+    "financial_entries",
+    "payables",
+    "nfse_documents",
+    "products",
+    "sales",
+    "commissions",
+    "service_records"
+  ]) {
+    assert.match(migration, new RegExp(`on public\\.${table}\\nfor all to authenticated\\nusing \\(public\\.company_match\\(company_id\\)\\)`));
+  }
+});
+
+test("administracao de usuarios valida empresa do usuario e dos grupos", () => {
+  const route = readFileSync("src/app/api/users/route.ts", "utf8");
+  assert.match(route, /\.eq\("company_id", companyId\)/);
+  assert.match(route, /\.eq\("company_id", actor\.company_id\)/);
+});

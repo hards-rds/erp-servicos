@@ -98,16 +98,22 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
     );
   }
 
-  const { data: clients } = await supabase
-    .from("clients")
-    .select("id,legal_name")
-    .eq("status", "ativo")
-    .order("legal_name", { ascending: true });
-  const { data: contracts } = await supabase
-    .from("contracts")
-    .select("id,client_id,service_description,recurring_amount,periodicity,due_day,starts_at,status,auto_issue_nfse,auto_generate_charge,fiscal_service_data,notes,clients(legal_name)")
-    .order("created_at", { ascending: false })
-    .limit(50);
+  const [{ data: clients }, { data: contracts }] = profile?.company_id
+    ? await Promise.all([
+      supabase
+        .from("clients")
+        .select("id,legal_name")
+        .eq("company_id", profile.company_id)
+        .eq("status", "ativo")
+        .order("legal_name", { ascending: true }),
+      supabase
+        .from("contracts")
+        .select("id,client_id,service_description,recurring_amount,periodicity,due_day,starts_at,status,auto_issue_nfse,auto_generate_charge,fiscal_service_data,notes,clients(legal_name)")
+        .eq("company_id", profile.company_id)
+        .order("created_at", { ascending: false })
+        .limit(50)
+    ])
+    : [{ data: [] }, { data: [] }];
   const allClients = (clients || []) as ClientRow[];
   const allContracts = (contracts || []) as ContractRow[];
   const editingContract = params?.edit ? allContracts.find((contract) => contract.id === params.edit) : undefined;
