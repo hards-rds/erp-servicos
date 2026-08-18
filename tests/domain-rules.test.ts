@@ -62,10 +62,17 @@ test("consolida fluxo de caixa previsto e realizado", () => {
     [
       { id: "p1", competence: "2026-07", dueDate: "2026-07-12", amountCents: 40000, status: "pago" },
       { id: "p2", competence: "2026-07", dueDate: "2026-07-18", amountCents: 10000, status: "previsto" }
+    ],
+    [
+      { commissionAmountCents: 5000, status: "pendente", payableId: null },
+      { commissionAmountCents: 9000, status: "aprovada", payableId: "p2" },
+      { commissionAmountCents: 3000, status: "cancelada", payableId: null }
     ]
   );
 
-  assert.equal(summary.projectedBalanceCents, 100000);
+  assert.equal(summary.pendingCommissionExpenseCents, 5000);
+  assert.equal(summary.expectedExpenseCents, 55000);
+  assert.equal(summary.projectedBalanceCents, 95000);
   assert.equal(summary.realizedBalanceCents, 60000);
 });
 

@@ -17,6 +17,10 @@ type PayableRow = {
   status: string;
 };
 
+type CommissionRow = {
+  commission_amount: number | string;
+};
+
 function formatMoney(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -41,9 +45,10 @@ export default async function DashboardPage() {
 
   let entries: FinancialEntryRow[] = [];
   let payables: PayableRow[] = [];
+  let commissions: CommissionRow[] = [];
   let pendingNotes = 0;
   if (profile?.company_id) {
-    const [entriesResult, payablesResult, notesResult] = await Promise.all([
+    const [entriesResult, payablesResult, commissionsResult, notesResult] = await Promise.all([
       supabase
         .from("financial_entries")
         .select("id,description,due_date,net_amount,received_amount,status,clients(legal_name)")
@@ -56,6 +61,12 @@ export default async function DashboardPage() {
         .eq("company_id", profile.company_id)
         .neq("status", "cancelado"),
       supabase
+        .from("commissions")
+        .select("commission_amount")
+        .eq("company_id", profile.company_id)
+        .eq("status", "pendente")
+        .is("payable_id", null),
+      supabase
         .from("nfse_documents")
         .select("id", { count: "exact", head: true })
         .eq("company_id", profile.company_id)
@@ -63,6 +74,7 @@ export default async function DashboardPage() {
     ]);
     entries = (entriesResult.data || []) as FinancialEntryRow[];
     payables = (payablesResult.data || []) as PayableRow[];
+    commissions = (commissionsResult.data || []) as CommissionRow[];
     pendingNotes = notesResult.count || 0;
   }
 
@@ -74,10 +86,15 @@ export default async function DashboardPage() {
     0
   );
   const openEntries = financialEntries.filter((entry) => ["previsto", "emitido", "aguardando_pagamento", "vencido"].includes(entry.status));
-  const expectedExpenses = payables.reduce((total, payable) => total + Number(payable.amount || 0), 0);
+  const pendingCommissions = commissions.reduce(
+    (total, commission) => total + Number(commission.commission_amount || 0),
+    0
+  );
+  const expectedExpenses = payables.reduce((total, payable) => total + Number(payable.amount || 0), 0) + pendingCommissions;
   const paidPayables = payables.filter((payable) => ["pago", "conciliado"].includes(payable.status));
   const paidExpenses = paidPayables.reduce((total, payable) => total + Number(payable.amount || 0), 0);
   const openPayables = payables.filter((payable) => !["pago", "conciliado"].includes(payable.status));
+  const openExpenseCount = openPayables.length + commissions.length;
   const realizedPercent = expected > 0 ? Math.round((received / expected) * 100) : 0;
   const paidPercent = expectedExpenses > 0 ? Math.round((paidExpenses / expectedExpenses) * 100) : 0;
   const projectedBalance = expected - expectedExpenses;
@@ -92,7 +109,7 @@ export default async function DashboardPage() {
       <section className="metrics dashboard-metrics">
         <MetricCard label="Recebivel previsto" value={formatMoney(expected)} detail={`${openEntries.length} em aberto`} />
         <MetricCard label="Recebido" value={formatMoney(received)} detail={`${realizedPercent}% realizado`} />
-        <MetricCard label="Saidas previstas" value={formatMoney(expectedExpenses)} detail={`${openPayables.length} em aberto`} />
+        <MetricCard label="Saidas previstas" value={formatMoney(expectedExpenses)} detail={`${openExpenseCount} em aberto`} />
         <MetricCard label="Saidas pagas" value={formatMoney(paidExpenses)} detail={`${paidPercent}% realizado`} />
         <MetricCard label="Saldo projetado" value={formatMoney(projectedBalance)} detail="entradas menos saidas" />
         <MetricCard label="Notas com pendencia" value={String(pendingNotes)} detail="fila fiscal" />
