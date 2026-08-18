@@ -232,6 +232,10 @@ textarea {
   padding: 20px;
 }
 
+.tenant-dialog {
+  width: min(680px, calc(100vw - 32px));
+}
+
 .action-dialog::backdrop {
   background: rgba(0, 0, 0, 0.78);
 }

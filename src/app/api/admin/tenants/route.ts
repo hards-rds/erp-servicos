@@ -44,6 +44,91 @@ export async function POST(request: NextRequest) {
   }
 
   const formData = await request.formData();
+  const action = String(formData.get("action") || "create").trim();
+  const service = createServiceClient();
+
+  if (action === "update") {
+    const tenantId = String(formData.get("tenantId") || "").trim();
+    const companyId = String(formData.get("companyId") || "").trim();
+    const masterUserId = String(formData.get("masterUserId") || "").trim();
+    const tenantName = String(formData.get("tenantName") || "").trim();
+    const companyName = String(formData.get("companyName") || "").trim();
+    const companyDocument = onlyDigits(String(formData.get("companyDocument") || ""));
+    const masterName = String(formData.get("masterName") || "").trim();
+    const serviceSegment = String(formData.get("serviceSegment") || "").trim();
+    const plan = String(formData.get("plan") || "").trim();
+    const tenantStatus = String(formData.get("tenantStatus") || "").trim();
+    const companyActive = String(formData.get("companyActive") || "") === "true";
+
+    if (
+      !tenantId
+      || !companyId
+      || !tenantName
+      || !companyName
+      || !["starter", "pro", "enterprise"].includes(plan)
+      || !["active", "trial", "suspended", "cancelled"].includes(tenantStatus)
+      || !["tecnologia", "otica", "generico"].includes(serviceSegment)
+      || (masterUserId && !masterName)
+    ) {
+      return redirectWith(request, "update_invalid");
+    }
+
+    const [{ data: tenant }, { data: company }] = await Promise.all([
+      service.from("tenants").select("id").eq("id", tenantId).maybeSingle(),
+      service.from("companies").select("id,tenant_id").eq("id", companyId).eq("tenant_id", tenantId).maybeSingle()
+    ]);
+    if (!tenant || !company) return redirectWith(request, "update_not_found");
+
+    if (masterUserId) {
+      const { data: membership } = await service
+        .from("tenant_members")
+        .select("user_id")
+        .eq("tenant_id", tenantId)
+        .eq("user_id", masterUserId)
+        .eq("active", true)
+        .maybeSingle();
+      if (!membership) return redirectWith(request, "update_not_found");
+
+      const { error: authError } = await service.auth.admin.updateUserById(masterUserId, {
+        user_metadata: { name: masterName }
+      });
+      if (authError) return redirectWith(request, "error");
+    }
+
+    const now = new Date().toISOString();
+    const [tenantResult, companyResult, profileResult] = await Promise.all([
+      service
+        .from("tenants")
+        .update({ name: tenantName, plan, status: tenantStatus, updated_at: now })
+        .eq("id", tenantId),
+      service
+        .from("companies")
+        .update({
+          name: companyName,
+          document: companyDocument || null,
+          service_segment: serviceSegment,
+          active: companyActive,
+          updated_at: now
+        })
+        .eq("id", companyId)
+        .eq("tenant_id", tenantId),
+      masterUserId
+        ? service
+            .from("profiles")
+            .update({ name: masterName, updated_at: now })
+            .eq("id", masterUserId)
+            .eq("tenant_id", tenantId)
+        : Promise.resolve({ error: null })
+    ]);
+    if (tenantResult.error || companyResult.error || profileResult.error) {
+      return redirectWith(request, "error");
+    }
+
+    return redirectWith(request, "updated");
+  }
+
+  if (action !== "create") return redirectWith(request, "invalid");
+
   const tenantName = String(formData.get("tenantName") || "").trim();
   const companyName = String(formData.get("companyName") || tenantName).trim();
   const companyDocument = onlyDigits(String(formData.get("companyDocument") || ""));
@@ -64,7 +149,6 @@ export async function POST(request: NextRequest) {
     return redirectWith(request, "invalid");
   }
 
-  const service = createServiceClient();
   const { data: authUser, error: userError } = await service.auth.admin.createUser({
     email: masterEmail,
     password: masterPassword,
