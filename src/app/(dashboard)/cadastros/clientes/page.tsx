@@ -72,6 +72,7 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   optical_invalid: { kind: "error", text: "Revise cliente e data antes de salvar o registro optico." },
   optical_error: { kind: "error", text: "Nao foi possivel salvar o registro optico agora." },
   invalid_delete: { kind: "error", text: "Nao foi possivel identificar o cliente para excluir." },
+  delete_not_found: { kind: "error", text: "Cliente nao encontrado na empresa ativa ou ja excluido." },
   delete_linked: { kind: "error", text: "Este cliente tem vinculos em servicos, contratos ou financeiro e nao pode ser excluido." },
   delete_error: { kind: "error", text: "Nao foi possivel excluir o cliente agora." },
   update_error: { kind: "error", text: "Nao foi possivel atualizar o cliente agora." },
@@ -234,15 +235,19 @@ export default async function ClientesPage({ searchParams }: ClientesPageProps) 
     ? await supabase.from("companies").select("service_segment").eq("id", profile.company_id).maybeSingle()
     : { data: null };
   const isOpticalTenant = company?.service_segment === "otica";
-  const { data: clients } = await supabase
-    .from("clients")
-    .select("id,legal_name,trade_name,document,municipal_registration,state_registration,fiscal_email,financial_email,phone,address,internal_notes,status,created_at")
-    .order("created_at", { ascending: false })
-    .limit(50);
-  const { data: opticalRecords } = isOpticalTenant
+  const { data: clients } = profile?.company_id
+    ? await supabase
+      .from("clients")
+      .select("id,legal_name,trade_name,document,municipal_registration,state_registration,fiscal_email,financial_email,phone,address,internal_notes,status,created_at")
+      .eq("company_id", profile.company_id)
+      .order("created_at", { ascending: false })
+      .limit(50)
+    : { data: [] };
+  const { data: opticalRecords } = isOpticalTenant && profile?.company_id
     ? await supabase
       .from("client_optical_records")
       .select("id,client_id,exam_date,professional_name,right_eye,left_eye,clinical_data,notes,created_at")
+      .eq("company_id", profile.company_id)
       .order("exam_date", { ascending: false })
       .order("created_at", { ascending: false })
       .limit(300)

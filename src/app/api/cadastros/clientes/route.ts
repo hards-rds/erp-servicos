@@ -37,14 +37,17 @@ export async function POST(request: NextRequest) {
   if (action === "delete") {
     if (!clientId) return redirectWith(request, "invalid_delete");
 
-    const { error } = await supabase
+    const { data: deletedClients, error } = await supabase
       .from("clients")
       .delete()
       .eq("id", clientId)
-      .eq("company_id", profile.company_id);
+      .eq("company_id", profile.company_id)
+      .select("id");
 
     if (error?.code === "23503") return redirectWith(request, "delete_linked");
-    return redirectWith(request, error ? "delete_error" : "deleted");
+    if (error) return redirectWith(request, "delete_error");
+    if (!deletedClients?.length) return redirectWith(request, "delete_not_found");
+    return redirectWith(request, "deleted");
   }
 
   const document = onlyDigits(readString(formData, "document"));
