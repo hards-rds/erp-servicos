@@ -1,10 +1,20 @@
 import { SellerRuleForm } from "@/components/finance/seller-rule-form";
+import { SellerActions } from "@/components/finance/seller-actions";
+import { SellerRuleActions } from "@/components/finance/seller-rule-actions";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { serviceTypeOptions, type ServiceSegment } from "@/domains/services/catalog";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-type Seller = { id: string; name: string; email: string | null; phone: string | null; active: boolean };
+type Seller = {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  notes: string | null;
+  profile_id: string | null;
+  active: boolean;
+};
 type Profile = { id: string; name: string | null; email: string };
 type Product = { id: string; name: string };
 type Rule = {
@@ -12,6 +22,7 @@ type Rule = {
   commission_seller_id: string;
   source_type: "venda" | "servico";
   item_key: string;
+  product_id: string | null;
   service_type: string | null;
   rate_percent: number | string;
   seller: { name: string } | { name: string }[] | null;
@@ -20,8 +31,10 @@ type Rule = {
 
 const messages: Record<string, { kind: "success" | "error"; text: string }> = {
   seller_created: { kind: "success", text: "Vendedor cadastrado com sucesso." },
-  seller_updated: { kind: "success", text: "Status do vendedor atualizado." },
+  seller_updated: { kind: "success", text: "Vendedor atualizado com sucesso." },
   rule_saved: { kind: "success", text: "Percentual de comissao salvo." },
+  rule_updated: { kind: "success", text: "Percentual atualizado com sucesso." },
+  duplicate_rule: { kind: "error", text: "Ja existe um percentual para este vendedor e item." },
   rule_deleted: { kind: "success", text: "Regra de comissao excluida." },
   duplicate_seller: { kind: "error", text: "Este usuario ja esta vinculado a um vendedor." },
   invalid_profile: { kind: "error", text: "O usuario selecionado nao pertence a empresa ativa." },
@@ -53,10 +66,10 @@ export default async function VendedoresPage({ searchParams }: { searchParams?: 
 
   if (profile?.company_id) {
     const [{ data: sellerData }, { data: profileData }, { data: productData }, { data: ruleData }, { data: company }] = await Promise.all([
-      supabase.from("commission_sellers").select("id,name,email,phone,active").eq("company_id", profile.company_id).order("active", { ascending: false }).order("name"),
-      supabase.from("profiles").select("id,name,email").eq("company_id", profile.company_id).eq("active", true).order("name"),
+      supabase.from("commission_sellers").select("id,name,email,phone,notes,profile_id,active").eq("company_id", profile.company_id).order("active", { ascending: false }).order("name"),
+      supabase.from("profiles").select("id,name,email").eq("company_id", profile.company_id).order("name"),
       supabase.from("products").select("id,name").eq("company_id", profile.company_id).eq("active", true).order("name"),
-      supabase.from("seller_commission_rules").select("id,commission_seller_id,source_type,item_key,service_type,rate_percent,seller:commission_sellers!seller_commission_rules_commission_seller_id_fkey(name),product:products(name)").eq("company_id", profile.company_id).eq("active", true).order("source_type").order("item_key"),
+      supabase.from("seller_commission_rules").select("id,commission_seller_id,source_type,item_key,product_id,service_type,rate_percent,seller:commission_sellers!seller_commission_rules_commission_seller_id_fkey(name),product:products(name)").eq("company_id", profile.company_id).eq("active", true).order("source_type").order("item_key"),
       supabase.from("companies").select("service_segment").eq("id", profile.company_id).maybeSingle()
     ]);
     sellers = (sellerData || []) as Seller[];
@@ -68,6 +81,8 @@ export default async function VendedoresPage({ searchParams }: { searchParams?: 
 
   const message = params?.status ? messages[params.status] : null;
   const activeSellers = sellers.filter((seller) => seller.active);
+  const sellerOptions = sellers.map((seller) => ({ id: seller.id, name: seller.name }));
+  const profileOptions = profiles.map((item) => ({ id: item.id, name: item.name || item.email }));
   const serviceLabels = new Map((serviceTypeOptions[segment] || serviceTypeOptions.tecnologia).map((item) => [item.value, item.label]));
 
   return (
@@ -92,12 +107,18 @@ export default async function VendedoresPage({ searchParams }: { searchParams?: 
                     <td>{seller.email || seller.phone || "-"}</td>
                     <td><StatusBadge tone={seller.active ? "success" : "neutral"}>{seller.active ? "ativo" : "inativo"}</StatusBadge></td>
                     <td>
-                      <form action="/api/financeiro/vendedores" method="post">
-                        <input type="hidden" name="action" value="toggle_seller" />
-                        <input type="hidden" name="sellerId" value={seller.id} />
-                        <input type="hidden" name="active" value={seller.active ? "false" : "true"} />
-                        <button className="ghost-button compact-button" type="submit">{seller.active ? "Desativar" : "Ativar"}</button>
-                      </form>
+                      <SellerActions
+                        seller={{
+                          id: seller.id,
+                          name: seller.name,
+                          email: seller.email,
+                          phone: seller.phone,
+                          notes: seller.notes,
+                          profileId: seller.profile_id,
+                          active: seller.active
+                        }}
+                        profiles={profileOptions}
+                      />
                     </td>
                   </tr>
                 )) : <tr><td colSpan={4}>Nenhum vendedor cadastrado.</td></tr>}
@@ -148,11 +169,19 @@ export default async function VendedoresPage({ searchParams }: { searchParams?: 
                       <td>{item}</td>
                       <td><strong>{Number(rule.rate_percent).toLocaleString("pt-BR", { maximumFractionDigits: 4 })}%</strong></td>
                       <td>
-                        <form action="/api/financeiro/vendedores" method="post">
-                          <input type="hidden" name="action" value="delete_rule" />
-                          <input type="hidden" name="ruleId" value={rule.id} />
-                          <button className="ghost-button compact-button" type="submit">Excluir</button>
-                        </form>
+                        <SellerRuleActions
+                          rule={{
+                            id: rule.id,
+                            sellerId: rule.commission_seller_id,
+                            sourceType: rule.source_type,
+                            productId: rule.product_id,
+                            serviceType: rule.service_type,
+                            ratePercent: rule.rate_percent
+                          }}
+                          sellers={sellerOptions}
+                          products={products}
+                          serviceTypes={serviceTypeOptions[segment] || serviceTypeOptions.tecnologia}
+                        />
                       </td>
                     </tr>
                   );
