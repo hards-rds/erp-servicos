@@ -17,11 +17,12 @@ export async function POST(request: NextRequest) {
   }
   const events = (Array.isArray(body) ? body : [body]).filter((item): item is Row => Boolean(item && typeof item === "object" && !Array.isArray(item)));
   if (!events.length) return NextResponse.json({ error: "Evento vazio." }, { status: 400 });
+  const identifiedEvents = events.filter((event) => String(event.codigoSolicitacao || "").trim());
+  if (!identifiedEvents.length) return NextResponse.json({ error: "Evento sem codigoSolicitacao." }, { status: 400 });
 
   const supabase = createServiceClient();
-  for (const event of events) {
+  for (const event of identifiedEvents) {
     const externalId = String(event.codigoSolicitacao || "").trim();
-    if (!externalId) continue;
     const { data: charge } = await supabase
       .from("boleto_charges")
       .select("id,company_id")
