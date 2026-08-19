@@ -22,7 +22,9 @@ const messages: Record<string, { kind: "success" | "error"; text: string }> = {
   inter_credentials_environment: { kind: "error", text: "O Inter recusou as credenciais. Confirme Client ID, Client Secret e ambiente: credenciais de Producao nao funcionam no Sandbox." },
   inter_scope: { kind: "error", text: "A integracao Inter nao possui os escopos boleto-cobranca.read e boleto-cobranca.write. Habilite a API Cobranca no Internet Banking." },
   inter_unavailable: { kind: "error", text: "O Banco Inter esta indisponivel ou excedeu o tempo de resposta. Tente novamente em alguns minutos." },
-  certificate_size: { kind: "error", text: "O certificado deve ter no maximo 5 MB." },
+  certificate_size: { kind: "error", text: "Cada arquivo de certificado deve ter no maximo 5 MB." },
+  certificate_pair: { kind: "error", text: "Envie juntos o certificado CRT e a chave KEY fornecidos pelo Inter." },
+  certificate_choice: { kind: "error", text: "Escolha apenas um formato: CRT com KEY ou um arquivo PFX/P12." },
   invalid: { kind: "error", text: "Preencha as credenciais e o certificado do Banco Inter." },
   forbidden: { kind: "error", text: "Apenas usuarios master podem configurar integracoes bancarias." },
   profile_error: { kind: "error", text: "Seu usuario nao esta vinculado a uma empresa." },
@@ -103,9 +105,13 @@ export default async function ApisPage({ searchParams }: ApisPageProps) {
               </div>
               <div className="form-grid">
                 <label>Client Secret<input name="clientSecret" type="password" autoComplete="new-password" placeholder="Deixe vazio para manter o atual" disabled={!isMaster} /></label>
-                <label>Senha do certificado<input name="certificatePassword" type="password" autoComplete="new-password" placeholder="Deixe vazio para manter a atual" disabled={!isMaster} /></label>
+                <label>Senha do PFX ou da chave<input name="certificatePassword" type="password" autoComplete="new-password" placeholder="Opcional para KEY sem senha" disabled={!isMaster} /></label>
               </div>
-              <label>Certificado PFX/P12<input name="certificate" type="file" accept=".pfx,.p12" disabled={!isMaster} /></label>
+              <div className="form-grid">
+                <label>Certificado original do Inter (.crt)<input name="certificateCrt" type="file" accept=".crt,.pem,application/x-x509-ca-cert" disabled={!isMaster} /></label>
+                <label>Chave privada original do Inter (.key)<input name="privateKey" type="file" accept=".key,.pem" disabled={!isMaster} /></label>
+              </div>
+              <label>Alternativa: certificado convertido PFX/P12<input name="certificate" type="file" accept=".pfx,.p12" disabled={!isMaster} /></label>
               <fieldset className="checkbox-panel">
                 <legend>Ativacao</legend>
                 <label className="checkbox-row"><input type="checkbox" name="active" defaultChecked={row?.active || !allCredentials.length} disabled={!isMaster} /><span>Usar este ambiente nas novas cobrancas</span></label>

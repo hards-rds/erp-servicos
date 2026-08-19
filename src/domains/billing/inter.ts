@@ -42,7 +42,7 @@ export function classifyInterConnectionError(value: unknown) {
   if (["mac verify failure", "bad decrypt", "invalid password", "passphrase"].some((term) => message.includes(term))) {
     return "inter_pfx_password";
   }
-  if (["pkcs12", "asn1", "not enough data", "header too long", "no certificate"].some((term) => message.includes(term))) {
+  if (["pkcs12", "asn1", "not enough data", "header too long", "no certificate", "no start line", "pem routines", "key values mismatch"].some((term) => message.includes(term))) {
     return "inter_pfx_invalid";
   }
   if (["403", "escopo", "scope", "insufficient_scope"].some((term) => message.includes(term))) {

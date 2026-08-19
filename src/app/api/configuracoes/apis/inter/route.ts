@@ -11,7 +11,7 @@ import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/
 
 export const runtime = "nodejs";
 
-const maxPfxBytes = 5 * 1024 * 1024;
+const maxCredentialFileBytes = 5 * 1024 * 1024;
 
 function readString(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
@@ -61,18 +61,41 @@ export async function POST(request: NextRequest) {
   }
 
   const certificate = formData.get("certificate");
-  if (certificate instanceof File && certificate.size > maxPfxBytes) return redirectWith(request, "certificate_size");
-  const pfxBase64 = certificate instanceof File && certificate.size
-    ? Buffer.from(await certificate.arrayBuffer()).toString("base64")
-    : previous?.pfxBase64 || "";
+  const certificateCrt = formData.get("certificateCrt");
+  const privateKey = formData.get("privateKey");
+  const pfxFile = certificate instanceof File && certificate.size > 0 ? certificate : null;
+  const crtFile = certificateCrt instanceof File && certificateCrt.size > 0 ? certificateCrt : null;
+  const keyFile = privateKey instanceof File && privateKey.size > 0 ? privateKey : null;
+  const credentialFiles = [pfxFile, crtFile, keyFile].filter((file): file is File => Boolean(file));
+  if (credentialFiles.some((file) => file.size > maxCredentialFileBytes)) return redirectWith(request, "certificate_size");
+
+  const hasPfxUpload = Boolean(pfxFile);
+  const hasCrtUpload = Boolean(crtFile);
+  const hasKeyUpload = Boolean(keyFile);
+  if (hasPfxUpload && (hasCrtUpload || hasKeyUpload)) return redirectWith(request, "certificate_choice");
+  if (hasCrtUpload !== hasKeyUpload) return redirectWith(request, "certificate_pair");
+
+  const useNativeUpload = hasCrtUpload && hasKeyUpload;
+  const pfxBase64 = hasPfxUpload
+    ? Buffer.from(await (pfxFile as File).arrayBuffer()).toString("base64")
+    : useNativeUpload ? undefined : previous?.pfxBase64;
+  const certificateBase64 = useNativeUpload
+    ? Buffer.from(await (crtFile as File).arrayBuffer()).toString("base64")
+    : hasPfxUpload ? undefined : previous?.certificateBase64;
+  const privateKeyBase64 = useNativeUpload
+    ? Buffer.from(await (keyFile as File).arrayBuffer()).toString("base64")
+    : hasPfxUpload ? undefined : previous?.privateKeyBase64;
   const clientId = readString(formData, "clientId") || previous?.clientId || "";
   const clientSecret = readSecret(formData, "clientSecret") || previous?.clientSecret || "";
-  const pfxPassword = readSecret(formData, "certificatePassword") || previous?.pfxPassword || "";
+  const passwordInput = readSecret(formData, "certificatePassword");
+  const pfxPassword = credentialFiles.length ? passwordInput : passwordInput || previous?.pfxPassword || "";
   const accountNumber = readString(formData, "accountNumber") || previous?.accountNumber || "";
   const active = formData.get("active") === "on";
   const realChargesEnabled = environment === "production" && formData.get("realChargesEnabled") === "on";
 
-  if (!clientId || !clientSecret || !pfxBase64) return redirectWith(request, "invalid");
+  if (!clientId || !clientSecret || (!pfxBase64 && !(certificateBase64 && privateKeyBase64))) {
+    return redirectWith(request, "invalid");
+  }
   const credentials: InterRuntimeCredentials = {
     companyId: profile.company_id,
     environment,
@@ -80,6 +103,8 @@ export async function POST(request: NextRequest) {
     clientSecret,
     pfxBase64,
     pfxPassword,
+    certificateBase64,
+    privateKeyBase64,
     accountNumber: accountNumber || undefined,
     realChargesEnabled
   };
@@ -88,6 +113,13 @@ export async function POST(request: NextRequest) {
     await testInterConnection(credentials);
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 500) : "Falha ao testar credenciais.";
+    const failureStatus = classifyInterConnectionError(error);
+    console.error("Banco Inter connection test failed", {
+      companyId: profile.company_id,
+      environment,
+      failureStatus,
+      message
+    });
     if (existing?.id) {
       await service.from("api_credentials").update({
         last_tested_at: new Date().toISOString(),
@@ -95,7 +127,7 @@ export async function POST(request: NextRequest) {
         updated_at: new Date().toISOString()
       }).eq("id", existing.id).eq("company_id", profile.company_id);
     }
-    return redirectWith(request, classifyInterConnectionError(error));
+    return redirectWith(request, failureStatus);
   }
 
   const webhookUrl = `${new URL(request.url).origin}/api/webhooks/inter/cobrancas`;
@@ -109,6 +141,8 @@ export async function POST(request: NextRequest) {
       clientSecret,
       pfxBase64,
       pfxPassword,
+      certificateBase64,
+      privateKeyBase64,
       accountNumber: accountNumber || undefined,
       realChargesEnabled
     }),
@@ -116,7 +150,11 @@ export async function POST(request: NextRequest) {
     config_summary: {
       clientId,
       accountNumber: accountNumber || null,
-      certificateName: certificate instanceof File && certificate.size ? certificate.name : "certificado configurado",
+      certificateName: useNativeUpload
+        ? (crtFile as File).name
+        : hasPfxUpload ? (pfxFile as File).name : "certificado configurado",
+      privateKeyName: useNativeUpload ? (keyFile as File).name : null,
+      credentialFormat: useNativeUpload ? "crt_key" : pfxBase64 ? "pfx" : "crt_key",
       realChargesEnabled,
       webhookUrl
     },

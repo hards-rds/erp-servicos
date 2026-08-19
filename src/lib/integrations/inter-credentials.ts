@@ -8,8 +8,10 @@ export type InterRuntimeCredentials = {
   environment: InterEnvironment;
   clientId: string;
   clientSecret: string;
-  pfxBase64: string;
+  pfxBase64?: string;
   pfxPassword: string;
+  certificateBase64?: string;
+  privateKeyBase64?: string;
   accountNumber?: string;
   realChargesEnabled: boolean;
 };
@@ -26,7 +28,7 @@ export function decryptInterCredentials(companyId: string, encryptedPayload: str
     !["sandbox", "production"].includes(String(parsed.environment))
     || !parsed.clientId
     || !parsed.clientSecret
-    || !parsed.pfxBase64
+    || (!parsed.pfxBase64 && !(parsed.certificateBase64 && parsed.privateKeyBase64))
   ) {
     throw new Error("Credenciais armazenadas do Banco Inter estao incompletas.");
   }
@@ -36,8 +38,10 @@ export function decryptInterCredentials(companyId: string, encryptedPayload: str
     environment: parsed.environment as InterEnvironment,
     clientId: parsed.clientId,
     clientSecret: parsed.clientSecret,
-    pfxBase64: parsed.pfxBase64,
+    pfxBase64: parsed.pfxBase64 || undefined,
     pfxPassword: parsed.pfxPassword || "",
+    certificateBase64: parsed.certificateBase64 || undefined,
+    privateKeyBase64: parsed.privateKeyBase64 || undefined,
     accountNumber: parsed.accountNumber || undefined,
     realChargesEnabled: parsed.realChargesEnabled === true
   };

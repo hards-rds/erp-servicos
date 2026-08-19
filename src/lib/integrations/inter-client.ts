@@ -27,8 +27,18 @@ function baseUrl(credentials: InterRuntimeCredentials) {
 }
 
 function interAgent(credentials: InterRuntimeCredentials) {
+  const nativeCertificate = credentials.certificateBase64 && credentials.privateKeyBase64
+    ? {
+      cert: Buffer.from(credentials.certificateBase64, "base64"),
+      key: Buffer.from(credentials.privateKeyBase64, "base64")
+    }
+    : {};
+  const pfxCertificate = credentials.pfxBase64
+    ? { pfx: Buffer.from(credentials.pfxBase64, "base64") }
+    : {};
   return new https.Agent({
-    pfx: Buffer.from(credentials.pfxBase64, "base64"),
+    ...pfxCertificate,
+    ...nativeCertificate,
     passphrase: credentials.pfxPassword || undefined,
     minVersion: "TLSv1.2",
     rejectUnauthorized: true
