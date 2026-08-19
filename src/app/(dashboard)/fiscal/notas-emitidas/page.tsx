@@ -62,6 +62,7 @@ export default async function NotasEmitidasPage({ searchParams }: NotasEmitidasP
       .from("nfse_documents")
       .select("id,danfse_file_id,external_id,competence,service_amount,status,clients(legal_name,fiscal_email)")
       .eq("company_id", profile.company_id)
+      .in("status", ["autorizada", "cancelada"])
       .order("created_at", { ascending: false })
       .limit(100)
     : { data: [] };
@@ -110,6 +111,9 @@ export default async function NotasEmitidasPage({ searchParams }: NotasEmitidasP
                       <div className="table-actions">
                         {["autorizada", "cancelada"].includes(document.status) ? (
                           <>
+                            <a className="ghost-button compact-button button-link" href={`/api/fiscal/nfse/xml?id=${document.id}`}>
+                              Baixar XML
+                            </a>
                             {document.danfse_file_id ? (
                               <a className="ghost-button compact-button button-link" href={`/api/fiscal/nfse/danfse?id=${document.id}`}>
                                 Baixar PDF

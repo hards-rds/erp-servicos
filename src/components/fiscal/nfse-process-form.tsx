@@ -18,8 +18,8 @@ export function NfseProcessForm({ documentId, realProduction }: NfseProcessFormP
     >
       <input type="hidden" name="nfseDocumentId" value={documentId} />
       {realProduction ? <input type="hidden" name="productionConfirmed" value="true" /> : null}
-      <button className="ghost-button compact-button" type="submit">
-        {realProduction ? "Emitir" : "Processar"}
+      <button className="primary-button compact-button" type="submit">
+        {realProduction ? "Confirmar e emitir NFS-e" : "Validar NFS-e"}
       </button>
     </form>
   );
