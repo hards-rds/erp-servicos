@@ -29,10 +29,10 @@ type EmissaoNfsePageProps = {
 };
 
 const statusMessages: Record<string, { kind: "success" | "error"; text: string }> = {
-  queued: { kind: "success", text: "Entrada financeira criada. Confira os dados abaixo antes de emitir a NFS-e." },
+  queued: { kind: "success", text: "NFS-e adicionada a fila. O financeiro sera gerado somente depois da autorizacao." },
   processed: { kind: "success", text: "NFS-e autorizada e vinculada ao financeiro." },
   rejected: { kind: "error", text: "NFS-e rejeitada na validacao fiscal. Confira os dados e a mensagem da SEFIN." },
-  test_deleted: { kind: "success", text: "Documento de teste e lancamento financeiro excluidos." },
+  test_deleted: { kind: "success", text: "Documento de teste excluido; nenhum valor permaneceu no financeiro." },
   deleted_finance_kept: { kind: "success", text: "Documento excluido. O lancamento foi preservado por possuir outra vinculacao." },
   delete_blocked: { kind: "error", text: "Este documento possui XML autorizado e deve permanecer no historico fiscal." },
   delete_error: { kind: "error", text: "Nao foi possivel excluir o documento de teste." },
@@ -64,7 +64,7 @@ function getEntry(document: NfseRow) {
 }
 
 function getContractId(document: NfseRow) {
-  return getEntry(document)?.contract_id || null;
+  return getEntry(document)?.contract_id || String(document.request_payload?.contractId || "") || null;
 }
 
 function getFiscalData(document: NfseRow) {

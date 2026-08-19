@@ -76,6 +76,10 @@ test("contratos separam emissao fiscal e cobranca sem gerar fluxo no cadastro", 
   assert.doesNotMatch(route, /action === "generate"/);
   assert.match(page, /Emitir NFS-e/);
   assert.match(page, /Emitir boleto/);
+  assert.match(route, /const documentId = await ensureContractNfse\(input, fiscalData\)/);
+  assert.doesNotMatch(route, /ensureContractNfse\(input, entry\)/);
+  assert.match(emission, /ensureAuthorizedFinancialEntry/);
+  assert.match(emission, /result\.status === "autorizada"/);
   assert.match(emission, /nfse_document_id: document\.id/);
 });
 

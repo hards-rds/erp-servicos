@@ -96,8 +96,10 @@ async function ensureContractEntry(input: ContractFlowInput) {
   return concurrentEntry?.id ? { entryId: concurrentEntry.id, competence, dueDate } : null;
 }
 
-async function ensureContractNfse(input: ContractFlowInput, entry: NonNullable<Awaited<ReturnType<typeof ensureContractEntry>>>) {
-  const nfseKey = `nfse:${entry.entryId}:${entry.competence}`;
+async function ensureContractNfse(input: ContractFlowInput, fiscalData: Record<string, unknown>) {
+  const competence = competenceFromDate(new Date());
+  const dueDate = dueDateForCompetence(competence, input.dueDay);
+  const nfseKey = `nfse:contract:${input.contractId}:competence:${competence}`;
   const { data: existing } = await input.supabase
     .from("nfse_documents")
     .select("id")
@@ -109,15 +111,16 @@ async function ensureContractNfse(input: ContractFlowInput, entry: NonNullable<A
   const { data: document, error } = await input.supabase.from("nfse_documents").insert({
     company_id: input.companyId,
     client_id: input.clientId,
-    financial_entry_id: entry.entryId,
     status: "enfileirada",
-    competence: entry.competence,
+    competence,
     service_amount: input.amount,
     idempotency_key: nfseKey,
     request_payload: {
       source: "contract_recurrence",
       contractId: input.contractId,
-      financialEntryId: entry.entryId
+      serviceDescription: input.description,
+      dueDate,
+      ...fiscalData
     }
   }).select("id").single();
   if (!error && document?.id) return document.id;
@@ -237,14 +240,16 @@ export async function POST(request: NextRequest) {
       amount: Number(contract.recurring_amount),
       dueDay: Number(contract.due_day)
     };
-    const entry = await ensureContractEntry(input);
-    if (!entry) return redirectWith(request, "generate_error");
-
     if (action === "issue_nfse") {
-      const documentId = await ensureContractNfse(input, entry);
+      const fiscalData = contract.fiscal_service_data && typeof contract.fiscal_service_data === "object"
+        ? contract.fiscal_service_data as Record<string, unknown>
+        : {};
+      const documentId = await ensureContractNfse(input, fiscalData);
       return documentId ? redirectToNfse(request, documentId) : redirectWith(request, "generate_error");
     }
 
+    const entry = await ensureContractEntry(input);
+    if (!entry) return redirectWith(request, "generate_error");
     const chargeId = await ensureContractCharge(input, entry);
     if (!chargeId) return redirectWith(request, "generate_error");
     const interResult = await processInterCharge(profile.company_id, chargeId, profile.id);

@@ -77,5 +77,5 @@ export async function POST(request: NextRequest) {
       .eq("company_id", profile.company_id);
   }
 
-  return redirect(request, deleteEntry ? "test_deleted" : "deleted_finance_kept");
+  return redirect(request, !entryId || deleteEntry ? "test_deleted" : "deleted_finance_kept");
 }
