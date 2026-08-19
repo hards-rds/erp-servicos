@@ -86,6 +86,7 @@ test("contratos separam emissao fiscal e cobranca sem gerar fluxo no cadastro", 
 test("fila fiscal exige conferencia e protege notas autorizadas na limpeza", () => {
   const page = readFileSync("src/app/(dashboard)/fiscal/emissao-nfse/page.tsx", "utf8");
   const deletion = readFileSync("src/app/api/fiscal/nfse/excluir-teste/route.ts", "utf8");
+  const cancelledFinance = readFileSync("src/app/api/fiscal/nfse/ajustar-financeiro-cancelada/route.ts", "utf8");
   const xml = readFileSync("src/app/api/fiscal/nfse/xml/route.ts", "utf8");
 
   assert.match(page, /Conferencia da NFS-e/);
@@ -94,5 +95,7 @@ test("fila fiscal exige conferencia e protege notas autorizadas na limpeza", () 
   assert.match(page, /\/api\/fiscal\/nfse\/danfse/);
   assert.match(deletion, /findAuthorizedNfseXml/);
   assert.match(deletion, /\["previsto", "emitido"\]/);
+  assert.match(cancelledFinance, /document\.status !== "cancelada"/);
+  assert.match(cancelledFinance, /status: "cancelado"/);
   assert.match(xml, /application\/xml/);
 });

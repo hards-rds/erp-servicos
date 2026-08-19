@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
 
     const { data: document } = await supabase
       .from("nfse_documents")
-      .select("id,company_id,status,protocol,response_payload,companies(document)")
+      .select("id,company_id,financial_entry_id,status,protocol,response_payload,companies(document)")
       .eq("id", nfseDocumentId)
       .eq("company_id", profile.company_id)
       .maybeSingle();
@@ -133,6 +133,16 @@ export async function POST(request: NextRequest) {
           "cancel_error",
           "A SEFIN confirmou o cancelamento, mas o status local nao foi atualizado. Nao tente cancelar novamente."
         );
+      }
+
+      if (document.financial_entry_id) {
+        await service
+          .from("financial_entries")
+          .update({ status: "cancelado", updated_by: profile.id, updated_at: new Date().toISOString() })
+          .eq("id", document.financial_entry_id)
+          .eq("company_id", profile.company_id)
+          .in("status", ["previsto", "emitido"])
+          .is("received_at", null);
       }
     }
 

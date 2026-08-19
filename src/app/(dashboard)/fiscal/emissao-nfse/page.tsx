@@ -34,6 +34,8 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   rejected: { kind: "error", text: "NFS-e rejeitada na validacao fiscal. Confira os dados e a mensagem da SEFIN." },
   test_deleted: { kind: "success", text: "Documento de teste excluido; nenhum valor permaneceu no financeiro." },
   deleted_finance_kept: { kind: "success", text: "Documento excluido. O lancamento foi preservado por possuir outra vinculacao." },
+  cancelled_finance_cleared: { kind: "success", text: "Nota cancelada preservada no historico e retirada dos totais financeiros." },
+  cancelled_finance_blocked: { kind: "error", text: "O financeiro desta nota ja foi recebido ou conciliado e nao pode ser alterado automaticamente." },
   delete_blocked: { kind: "error", text: "Este documento possui XML autorizado e deve permanecer no historico fiscal." },
   delete_error: { kind: "error", text: "Nao foi possivel excluir o documento de teste." },
   forbidden: { kind: "error", text: "Seu usuario nao possui permissao para esta operacao." },
@@ -237,6 +239,12 @@ export default async function EmissaoNfsePage({ searchParams }: EmissaoNfsePageP
                     <div className="table-actions">
                       <a className="ghost-button button-link compact-button" href={`/api/fiscal/nfse/xml?id=${document.id}`}>XML</a>
                       <a className="ghost-button button-link compact-button" href={`/api/fiscal/nfse/danfse?id=${document.id}`}>DANFSe</a>
+                      {canEdit && document.status === "cancelada" ? (
+                        <form action="/api/fiscal/nfse/ajustar-financeiro-cancelada" method="post">
+                          <input type="hidden" name="nfseDocumentId" value={document.id} />
+                          <button className="ghost-button compact-button" type="submit">Retirar do financeiro</button>
+                        </form>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
