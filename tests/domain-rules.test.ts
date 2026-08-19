@@ -11,7 +11,12 @@ import {
   interpretCancellationResponse,
   validateCancellationInput
 } from "../src/lib/integrations/nfse-cancellation.ts";
-import { interChargeIdempotencyKey, mapInterChargeStatus, validateChargeDraft } from "../src/domains/billing/inter.ts";
+import {
+  classifyInterConnectionError,
+  interChargeIdempotencyKey,
+  mapInterChargeStatus,
+  validateChargeDraft
+} from "../src/domains/billing/inter.ts";
 import { assertCannotChangeOwnElevation, can } from "../src/domains/users/permissions.ts";
 import { serviceDeletionBlock } from "../src/domains/services/deletion.ts";
 import {
@@ -276,6 +281,13 @@ test("traduz retorno do Inter para o fluxo financeiro", () => {
   assert.equal(mapInterChargeStatus("A_RECEBER"), "aguardando_pagamento");
   assert.equal(mapInterChargeStatus("EXPIRADO"), "vencida");
   assert.equal(mapInterChargeStatus("CANCELADO"), "cancelada");
+});
+
+test("classifica falhas de conexao do Inter sem expor credenciais", () => {
+  assert.equal(classifyInterConnectionError(new Error("mac verify failure")), "inter_pfx_password");
+  assert.equal(classifyInterConnectionError(new Error("HTTP 401 invalid_client")), "inter_credentials_environment");
+  assert.equal(classifyInterConnectionError(new Error("HTTP 403 insufficient_scope")), "inter_scope");
+  assert.equal(classifyInterConnectionError(new Error("Tempo limite excedido")), "inter_unavailable");
 });
 
 test("aplica permissoes por grupo e bloqueia auto-elevacao", () => {

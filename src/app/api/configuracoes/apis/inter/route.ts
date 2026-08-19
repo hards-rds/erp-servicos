@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { classifyInterConnectionError } from "@/domains/billing/inter";
 import { configureInterWebhook, testInterConnection } from "@/lib/integrations/inter-client";
 import {
   decryptInterCredentials,
@@ -94,7 +95,7 @@ export async function POST(request: NextRequest) {
         updated_at: new Date().toISOString()
       }).eq("id", existing.id).eq("company_id", profile.company_id);
     }
-    return redirectWith(request, "connection_error");
+    return redirectWith(request, classifyInterConnectionError(error));
   }
 
   const webhookUrl = `${new URL(request.url).origin}/api/webhooks/inter/cobrancas`;

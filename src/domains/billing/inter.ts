@@ -36,3 +36,23 @@ export function mapInterChargeStatus(value: unknown): ChargeStatus {
   if (["EMITIDO", "EMITIDA", "REGISTRADO", "REGISTRADA"].includes(status)) return "emitida";
   return "solicitada";
 }
+
+export function classifyInterConnectionError(value: unknown) {
+  const message = (value instanceof Error ? value.message : String(value ?? "")).toLowerCase();
+  if (["mac verify failure", "bad decrypt", "invalid password", "passphrase"].some((term) => message.includes(term))) {
+    return "inter_pfx_password";
+  }
+  if (["pkcs12", "asn1", "not enough data", "header too long", "no certificate"].some((term) => message.includes(term))) {
+    return "inter_pfx_invalid";
+  }
+  if (["403", "escopo", "scope", "insufficient_scope"].some((term) => message.includes(term))) {
+    return "inter_scope";
+  }
+  if (["401", "invalid_client", "login/senha", "unauthorized", "bad certificate", "certificate unknown"].some((term) => message.includes(term))) {
+    return "inter_credentials_environment";
+  }
+  if (["tempo limite", "timeout", "econn", "enotfound", "503", "indisponivel"].some((term) => message.includes(term))) {
+    return "inter_unavailable";
+  }
+  return "connection_error";
+}
