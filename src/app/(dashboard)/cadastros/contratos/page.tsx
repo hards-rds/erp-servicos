@@ -284,6 +284,17 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
                     defaultValue={fiscalString(editingFiscal, "municipalServiceCode")}
                   />
                 </label>
+                <label>
+                  Codigo NBS
+                  <input
+                    name="nbsCode"
+                    inputMode="numeric"
+                    pattern="[0-9]{9}"
+                    maxLength={9}
+                    placeholder="Ex.: 123456789"
+                    defaultValue={fiscalString(editingFiscal, "nbsCode")}
+                  />
+                </label>
               </div>
               <label className="checkbox-row">
                 <input type="checkbox" name="retainIss" defaultChecked={fiscalBoolean(editingFiscal, "retainIss")} />

@@ -32,6 +32,7 @@ export type DanfsePdfData = {
   issuedAt?: string;
   serviceDescription: string;
   serviceCode?: string;
+  nbsCode?: string;
   cityCode?: string;
   amount: number | string;
   protocol?: string | null;
@@ -110,7 +111,8 @@ export function buildDanfsePdf(data: DanfsePdfData) {
   page.text(210, 419, `Emissao ${dateText(data.issuedAt)}`, 10);
   page.text(370, 419, `Valor ${money(data.amount)}`, 11, "F2");
   page.text(56, 394, `Codigo nacional ${data.serviceCode || "-"}`, 10);
-  page.text(250, 394, `Municipio ${data.cityCode || "-"}`, 10);
+  page.text(250, 394, `NBS ${data.nbsCode || "-"}`, 10);
+  page.text(410, 394, `Municipio ${data.cityCode || "-"}`, 10);
   page.wrappedText(56, 365, 470, data.serviceDescription, 10, 14);
 
   page.text(42, 274, "Controle Fiscal", 13, "F2");

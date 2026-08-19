@@ -17,6 +17,7 @@ type CatalogService = {
   category: string | null;
   service_type: string;
   sale_price: number | string;
+  fiscal_service_data: Record<string, unknown> | null;
   notes: string | null;
   active: boolean;
 };
@@ -67,6 +68,7 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   catalog_invalid: { kind: "error", text: "Revise nome, tipo e preco do servico." },
   catalog_duplicate: { kind: "error", text: "Ja existe um servico com este codigo." },
   catalog_error: { kind: "error", text: "Nao foi possivel salvar o servico no catalogo." },
+  fiscal_invalid: { kind: "error", text: "Revise o codigo nacional do servico e o NBS." },
   created: { kind: "success", text: "Servico cadastrado com sucesso." },
   updated: { kind: "success", text: "Servico atualizado com sucesso." },
   deleted: { kind: "success", text: "Servico excluido com sucesso." },
@@ -343,6 +345,27 @@ function ServiceForm({
           </div>
         </fieldset>
       ) : null}
+      <fieldset className="checkbox-panel">
+        <legend>Servico na NFS-e</legend>
+        <div className="form-grid">
+          <label>
+            Codigo nacional do servico
+            <input name="serviceCode" inputMode="numeric" maxLength={6} placeholder="Ex.: 010701" defaultValue={getString(details, "serviceCode")} />
+          </label>
+          <label>
+            Codigo municipal do servico
+            <input name="municipalServiceCode" placeholder="Ex.: 001" defaultValue={getString(details, "municipalServiceCode")} />
+          </label>
+          <label>
+            Codigo NBS
+            <input name="nbsCode" inputMode="numeric" pattern="[0-9]{9}" maxLength={9} placeholder="Ex.: 123456789" defaultValue={getString(details, "nbsCode")} />
+          </label>
+        </div>
+        <label className="checkbox-row">
+          <input type="checkbox" name="retainIss" defaultChecked={details.retainIss === true} />
+          <span>Reter ISSQN nesta operacao</span>
+        </label>
+      </fieldset>
       <label>
         Observacoes
         <textarea name="notes" defaultValue={service?.notes || ""} placeholder="Detalhes internos sobre este atendimento" />
@@ -374,7 +397,7 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
       supabase.from("clients").select("id,legal_name,document,status").eq("company_id", profile.company_id).eq("status", "ativo").order("legal_name"),
       supabase.from("service_records").select("id,client_id,service_description,service_type,amount,service_date,due_date,status,fiscal_service_data,notes,clients(legal_name,document),commissions(id,commission_seller_id,rate_percent,due_date,status)").eq("company_id", profile.company_id).order("service_date", { ascending: false }).limit(50),
       supabase.from("commission_sellers").select("id,name,email").eq("company_id", profile.company_id).eq("active", true).order("name"),
-      supabase.from("service_catalog").select("id,code,name,description,category,service_type,sale_price,notes,active").eq("company_id", profile.company_id).order("active", { ascending: false }).order("name")
+      supabase.from("service_catalog").select("id,code,name,description,category,service_type,sale_price,fiscal_service_data,notes,active").eq("company_id", profile.company_id).order("active", { ascending: false }).order("name")
     ])
     : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }];
   const message = params?.status ? statusMessages[params.status] : null;
@@ -426,6 +449,7 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
                             category: service.category,
                             serviceType: service.service_type,
                             salePrice: service.sale_price,
+                            fiscalServiceData: service.fiscal_service_data,
                             notes: service.notes,
                             active: service.active
                           }}
@@ -457,6 +481,15 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
                 </label>
               </div>
               <label>Preco de venda<input name="salePrice" inputMode="decimal" placeholder="0,00" required /></label>
+              <fieldset className="checkbox-panel">
+                <legend>Servico na NFS-e</legend>
+                <div className="form-grid">
+                  <label>Codigo nacional<input name="serviceCode" inputMode="numeric" maxLength={6} placeholder="Ex.: 010701" /></label>
+                  <label>Codigo municipal<input name="municipalServiceCode" placeholder="Ex.: 001" /></label>
+                  <label>Codigo NBS<input name="nbsCode" inputMode="numeric" pattern="[0-9]{9}" maxLength={9} placeholder="Ex.: 123456789" /></label>
+                </div>
+                <label className="checkbox-row"><input type="checkbox" name="retainIss" /><span>Reter ISSQN nesta operacao</span></label>
+              </fieldset>
               <label>Observacoes<textarea name="notes" placeholder="Dados internos do servico" /></label>
               <button className="primary-button" type="submit">Cadastrar servico</button>
             </form>

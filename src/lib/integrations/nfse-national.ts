@@ -159,6 +159,7 @@ export function buildDpsXml(input: NfseNationalInput) {
   const cityCode = onlyDigits(fiscalValue(emitterFiscalData, "cityCode"));
   const serviceCode = onlyDigits(fiscalValue(fiscalData, "serviceCode")).slice(0, 6);
   const municipalServiceCode = onlyDigits(fiscalValue(fiscalData, "municipalServiceCode")).slice(-3);
+  const nbsCode = onlyDigits(fiscalValue(fiscalData, "nbsCode"));
   const companyDocument = onlyDigits(input.company.document);
   const clientDocument = onlyDigits(input.client.document);
   const clientDocumentTag = clientDocument.length === 11 ? "CPF" : "CNPJ";
@@ -183,6 +184,7 @@ export function buildDpsXml(input: NfseNationalInput) {
     series,
     cityCode,
     serviceCode,
+    nbsCode,
     environment,
     simpleNationalStatus,
     simpleNationalAssessmentRegime,
@@ -233,6 +235,7 @@ export function buildDpsXml(input: NfseNationalInput) {
         <cTribNac>${xml(serviceCode)}</cTribNac>
         ${municipalServiceCode ? `<cTribMun>${xml(municipalServiceCode)}</cTribMun>` : ""}
         <xDescServ>${xml(input.entry.description)}</xDescServ>
+        ${nbsCode ? `<cNBS>${xml(nbsCode)}</cNBS>` : ""}
       </cServ>
     </serv>
     <valores>
@@ -274,6 +277,7 @@ export function validateDpsInput(input: NfseNationalInput) {
     errors.push("Percentuais aproximados dos tributos federal, estadual e municipal obrigatorios em Configuracoes Gerais.");
   }
   if (dps.serviceCode.length !== 6) errors.push("Codigo nacional de servico NFS-e obrigatorio com 6 digitos.");
+  if (dps.nbsCode && !/^\d{9}$/.test(dps.nbsCode)) errors.push("Codigo NBS deve conter 9 digitos.");
   if (Number(input.entry.net_amount) <= 0) errors.push("Valor da nota deve ser maior que zero.");
 
   return { dps, errors };

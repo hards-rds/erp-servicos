@@ -103,6 +103,7 @@ export async function generateAndAttachDanfsePdf(documentId: string, actorId?: s
     issuedAt: nfseInfo.issuedAt,
     serviceDescription: entry?.description || clean(requestPayload.serviceDescription) || "Prestacao de servicos",
     serviceCode: clean(requestPayload.serviceCode),
+    nbsCode: clean(requestPayload.nbsCode),
     cityCode: clean(requestPayload.cityCode),
     amount: entry?.net_amount || document.service_amount,
     protocol: document.protocol,

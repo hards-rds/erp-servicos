@@ -17,12 +17,17 @@ export function CatalogServiceActions({
     category: string | null;
     serviceType: string;
     salePrice: number | string;
+    fiscalServiceData: Record<string, unknown> | null;
     notes: string | null;
     active: boolean;
   };
   typeOptions: ServiceTypeOption[];
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const fiscalValue = (key: string) => {
+    const value = service.fiscalServiceData?.[key];
+    return typeof value === "string" ? value : "";
+  };
 
   return (
     <div className="table-actions">
@@ -64,6 +69,15 @@ export function CatalogServiceActions({
             </label>
           </div>
           <label>Preco de venda<input name="salePrice" inputMode="decimal" defaultValue={String(service.salePrice).replace(".", ",")} required /></label>
+          <fieldset className="checkbox-panel">
+            <legend>Servico na NFS-e</legend>
+            <div className="form-grid">
+              <label>Codigo nacional<input name="serviceCode" inputMode="numeric" maxLength={6} defaultValue={fiscalValue("serviceCode")} /></label>
+              <label>Codigo municipal<input name="municipalServiceCode" defaultValue={fiscalValue("municipalServiceCode")} /></label>
+              <label>Codigo NBS<input name="nbsCode" inputMode="numeric" pattern="[0-9]{9}" maxLength={9} defaultValue={fiscalValue("nbsCode")} /></label>
+            </div>
+            <label className="checkbox-row"><input type="checkbox" name="retainIss" defaultChecked={service.fiscalServiceData?.retainIss === true} /><span>Reter ISSQN nesta operacao</span></label>
+          </fieldset>
           <label>Observacoes<textarea name="notes" defaultValue={service.notes || ""} /></label>
           <div className="dialog-actions">
             <button className="ghost-button" type="button" onClick={() => dialogRef.current?.close()}>Voltar</button>

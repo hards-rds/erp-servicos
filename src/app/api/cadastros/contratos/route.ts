@@ -21,12 +21,15 @@ function collectFiscalServiceData(formData: FormData) {
     provider: "nfse_nacional",
     serviceCode: readString(formData, "serviceCode"),
     municipalServiceCode: readString(formData, "municipalServiceCode"),
+    nbsCode: readString(formData, "nbsCode"),
     retainIss: formData.get("retainIss") === "on"
   };
 }
 
-function hasValidNfseCodes(fiscalData: ReturnType<typeof collectFiscalServiceData>) {
-  return /^\d{6}$/.test(fiscalData.serviceCode);
+function hasValidNfseCodes(fiscalData: ReturnType<typeof collectFiscalServiceData>, requireServiceCode: boolean) {
+  if (requireServiceCode && !/^\d{6}$/.test(fiscalData.serviceCode)) return false;
+  if (fiscalData.serviceCode && !/^\d{6}$/.test(fiscalData.serviceCode)) return false;
+  return !fiscalData.nbsCode || /^\d{9}$/.test(fiscalData.nbsCode);
 }
 
 async function generateContractFlow(input: {
@@ -185,7 +188,7 @@ export async function POST(request: NextRequest) {
     return redirectWith(request, "invalid");
   }
 
-  if (autoIssueNfse && !hasValidNfseCodes(fiscalServiceData)) {
+  if (!hasValidNfseCodes(fiscalServiceData, autoIssueNfse)) {
     return redirectWith(request, "fiscal_invalid");
   }
 

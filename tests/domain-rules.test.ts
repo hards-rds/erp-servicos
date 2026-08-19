@@ -5,7 +5,7 @@ import { dueDateForCompetence } from "../src/lib/dates/competence.ts";
 import { generateRecurringEntry } from "../src/domains/contracts/recurrence.ts";
 import { summarizeCashflow, assertPayableCanBeMarkedPaid } from "../src/domains/finance/cashflow.ts";
 import { nfseIdempotencyKey, validateNfseDraft } from "../src/domains/fiscal/nfse.ts";
-import { buildDpsXml, interpretNfseResponse, mergeNfseFiscalData } from "../src/lib/integrations/nfse-national.ts";
+import { buildDpsXml, interpretNfseResponse, mergeNfseFiscalData, validateDpsInput } from "../src/lib/integrations/nfse-national.ts";
 import {
   buildCancellationXml,
   interpretCancellationResponse,
@@ -158,7 +158,7 @@ test("separa emitente, tomador e servico ao montar a DPS", () => {
       competence: "2026-08",
       net_amount: 100
     },
-    fiscalData: { serviceCode: "010701" }
+    fiscalData: { serviceCode: "010701", nbsCode: "123456789" }
   });
 
   assert.match(dps.xml, /<CPF>52998224725<\/CPF>/);
@@ -169,9 +169,44 @@ test("separa emitente, tomador e servico ao montar a DPS", () => {
   assert.match(dps.xml, /<cMun>3550308<\/cMun>/);
   assert.match(dps.xml, /<opSimpNac>3<\/opSimpNac>/);
   assert.match(dps.xml, /<regApTribSN>1<\/regApTribSN>/);
+  assert.match(dps.xml, /<xDescServ>Suporte tecnico<\/xDescServ>\s*<cNBS>123456789<\/cNBS>/);
   assert.match(dps.xml, /<trib>[\s\S]*<tribMun>[\s\S]*<\/tribMun>[\s\S]*<totTrib>[\s\S]*<pTotTrib>[\s\S]*<pTotTribFed>13\.45<\/pTotTribFed>[\s\S]*<pTotTribEst>0\.00<\/pTotTribEst>[\s\S]*<pTotTribMun>3\.05<\/pTotTribMun>[\s\S]*<\/pTotTrib>[\s\S]*<\/totTrib>[\s\S]*<\/trib>/);
   assert.doesNotMatch(dps.xml, /<indTotTrib>/);
   assert.doesNotMatch(dps.xml, /<pTotTribSN>/);
+});
+
+test("valida o NBS da DPS com nove digitos quando informado", () => {
+  const input = {
+    documentId: "documento-nbs",
+    company: {
+      name: "Emitente",
+      document: "04.252.011/0001-10",
+      fiscal_settings: {
+        cityCode: "3170206",
+        simpleNationalStatus: "3",
+        simpleNationalAssessmentRegime: "1",
+        federalTotalTaxRate: "13.45",
+        stateTotalTaxRate: "0",
+        municipalTotalTaxRate: "3.05"
+      }
+    },
+    client: {
+      legal_name: "Tomador",
+      document: "529.982.247-25",
+      fiscal_email: null,
+      phone: null,
+      address: null
+    },
+    entry: {
+      id: "entrada-nbs",
+      description: "Servico",
+      competence: "2026-08",
+      net_amount: 100
+    },
+    fiscalData: { serviceCode: "010701", nbsCode: "123" }
+  };
+
+  assert.match(validateDpsInput(input).errors.join(" "), /NBS deve conter 9 digitos/);
 });
 
 test("preserva a rejeicao detalhada devolvida pela SEFIN", () => {

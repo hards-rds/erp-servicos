@@ -16,6 +16,21 @@ function redirectWith(request: NextRequest, status: string) {
   return NextResponse.redirect(new URL(`/cadastros/servicos?view=catalogo&status=${status}`, request.url), 303);
 }
 
+function collectFiscalServiceData(formData: FormData) {
+  return {
+    provider: "nfse_nacional",
+    serviceCode: readString(formData, "serviceCode"),
+    municipalServiceCode: readString(formData, "municipalServiceCode"),
+    nbsCode: readString(formData, "nbsCode"),
+    retainIss: formData.get("retainIss") === "on"
+  };
+}
+
+function hasValidFiscalCodes(fiscalData: ReturnType<typeof collectFiscalServiceData>) {
+  if (fiscalData.serviceCode && !/^\d{6}$/.test(fiscalData.serviceCode)) return false;
+  return !fiscalData.nbsCode || /^\d{9}$/.test(fiscalData.nbsCode);
+}
+
 export async function POST(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -49,7 +64,8 @@ export async function POST(request: NextRequest) {
   const name = readString(formData, "name");
   const serviceType = readString(formData, "serviceType") || "avulso";
   const salePrice = parseMoney(readString(formData, "salePrice"));
-  if ((action === "update" && !catalogServiceId) || !name || salePrice === null || salePrice < 0) {
+  const fiscalServiceData = collectFiscalServiceData(formData);
+  if ((action === "update" && !catalogServiceId) || !name || salePrice === null || salePrice < 0 || !hasValidFiscalCodes(fiscalServiceData)) {
     return redirectWith(request, "catalog_invalid");
   }
 
@@ -69,6 +85,7 @@ export async function POST(request: NextRequest) {
     category: readString(formData, "category") || null,
     service_type: serviceType,
     sale_price: salePrice,
+    fiscal_service_data: fiscalServiceData,
     notes: readString(formData, "notes") || null,
     updated_by: profile.id,
     updated_at: new Date().toISOString()

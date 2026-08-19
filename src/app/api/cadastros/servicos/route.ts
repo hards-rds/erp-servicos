@@ -56,6 +56,22 @@ function collectSegmentDetails(formData: FormData, segment: string) {
   return { segment };
 }
 
+function collectFiscalServiceData(formData: FormData, segment: string) {
+  return {
+    ...collectSegmentDetails(formData, segment),
+    provider: "nfse_nacional",
+    serviceCode: readString(formData, "serviceCode"),
+    municipalServiceCode: readString(formData, "municipalServiceCode"),
+    nbsCode: readString(formData, "nbsCode"),
+    retainIss: formData.get("retainIss") === "on"
+  };
+}
+
+function hasValidFiscalCodes(fiscalData: ReturnType<typeof collectFiscalServiceData>) {
+  if (fiscalData.serviceCode && !/^\d{6}$/.test(fiscalData.serviceCode)) return false;
+  return !fiscalData.nbsCode || /^\d{9}$/.test(fiscalData.nbsCode);
+}
+
 async function getActiveContext(input: {
   supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>;
   userId: string;
@@ -239,6 +255,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.redirect(new URL("/cadastros/servicos?view=atendimentos&status=invalid", request.url), 303);
   }
 
+  const fiscalServiceData = collectFiscalServiceData(formData, segment);
+  if (!hasValidFiscalCodes(fiscalServiceData)) {
+    return NextResponse.redirect(new URL("/cadastros/servicos?view=atendimentos&status=fiscal_invalid", request.url), 303);
+  }
+
   const payload = {
     client_id: clientId,
     service_description: serviceDescription,
@@ -247,7 +268,7 @@ export async function POST(request: NextRequest) {
     service_date: readString(formData, "serviceDate") || new Date().toISOString().slice(0, 10),
     due_date: readString(formData, "dueDate") || null,
     status: readString(formData, "status") || "rascunho",
-    fiscal_service_data: collectSegmentDetails(formData, segment),
+    fiscal_service_data: fiscalServiceData,
     notes: readString(formData, "notes") || null,
     updated_by: context.profileId,
     updated_at: new Date().toISOString()

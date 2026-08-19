@@ -47,6 +47,7 @@ export async function requestNfseNationalEmission(
     dpsSeries: dps.series,
     cityCode: dps.cityCode,
     serviceCode: dps.serviceCode,
+    nbsCode: dps.nbsCode,
     dpsXml: dps.xml
   };
 
