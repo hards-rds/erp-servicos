@@ -7,6 +7,7 @@ const tenantPages = [
   "src/app/(dashboard)/cadastros/contratos/page.tsx",
   "src/app/(dashboard)/cadastros/servicos/page.tsx",
   "src/app/(dashboard)/configuracoes/emails/page.tsx",
+  "src/app/(dashboard)/configuracoes/apis/page.tsx",
   "src/app/(dashboard)/configuracoes/usuarios/page.tsx",
   "src/app/(dashboard)/dashboard/page.tsx",
   "src/app/(dashboard)/financeiro/boletos-cobrancas/page.tsx",
@@ -55,4 +56,12 @@ test("administracao de usuarios valida empresa do usuario e dos grupos", () => {
   const route = readFileSync("src/app/api/users/route.ts", "utf8");
   assert.match(route, /\.eq\("company_id", companyId\)/);
   assert.match(route, /\.eq\("company_id", actor\.company_id\)/);
+});
+
+test("operacoes do Inter derivam cobranca e entrada da empresa ativa", () => {
+  const route = readFileSync("src/app/api/billing/inter/charges/route.ts", "utf8");
+  const webhook = readFileSync("src/app/api/webhooks/inter/cobrancas/route.ts", "utf8");
+  assert.match(route, /\.eq\("company_id", profile\.company_id\)/);
+  assert.match(webhook, /getInterCharge\(externalId, credentials\)/);
+  assert.match(webhook, /loadActiveInterCredentials\(charge\.company_id\)/);
 });

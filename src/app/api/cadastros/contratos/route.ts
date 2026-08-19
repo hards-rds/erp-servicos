@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { competenceFromDate, dueDateForCompetence } from "@/lib/dates/competence";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { processInterCharge } from "@/server/services/inter-charge-service";
 
 function readString(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
@@ -103,11 +104,11 @@ async function generateContractFlow(input: {
 
   if (input.autoGenerateCharge) {
     const chargeKey = `inter-charge:${entry.id}:${dueDate}`;
-    await input.supabase.from("boleto_charges").upsert(
+    const { data: charge, error: chargeError } = await input.supabase.from("boleto_charges").upsert(
       {
         company_id: input.companyId,
         financial_entry_id: entry.id,
-        status: "solicitada",
+        status: "rascunho",
         idempotency_key: chargeKey,
         request_payload: {
           source: "contract_recurrence",
@@ -116,14 +117,13 @@ async function generateContractFlow(input: {
           dueDate,
           amount: input.amount
         },
-        response_payload: {
-          provider: "inter-sandbox-mock",
-          status: "solicitada"
-        },
         updated_at: new Date().toISOString()
       },
       { onConflict: "company_id,idempotency_key" }
-    );
+    ).select("id").single();
+    if (chargeError || !charge?.id) return false;
+    const interResult = await processInterCharge(input.companyId, charge.id, input.profileId);
+    if (!interResult.ok) return false;
   }
 
   return true;

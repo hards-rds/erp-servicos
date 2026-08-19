@@ -8,7 +8,7 @@ Base inicial em Next.js, TypeScript e Supabase para um ERP focado em clientes re
 - Layout autenticado com sidebar recolhivel, header, breadcrumbs e navegacao por modulos.
 - Telas iniciais para clientes, contratos, financeiro, fiscal e configuracoes.
 - Dominios com regras testaveis para recorrencia, fluxo de caixa, CPF/CNPJ, permissoes, NFS-e e cobrancas.
-- Rotas server-side preparadas para login, usuarios, NFS-e e Banco Inter, usando mocks/sandbox por padrao.
+- Integracao server-side com Banco Inter Cobranca V3, credenciais isoladas por tenant, webhook, PDF, cancelamento e baixa automatica.
 - Migration Supabase inicial com entidades centrais, RLS considerado e auditoria.
 
 ## Comandos
@@ -33,7 +33,7 @@ Padroes aproveitados: login escuro, sidebar por modulos, perfil de usuario, grup
 
 ## Seguranca
 
-Nao versionar `.env`, certificados, dumps reais, tokens, senhas ou chaves privadas. Chamadas reais para NFS-e, Banco Inter ou producao precisam de autorizacao explicita.
+Nao versionar `.env`, certificados, dumps reais, tokens, senhas ou chaves privadas. Credenciais do Banco Inter sao cadastradas por tenant em `Configuracoes > APIs`; cobrancas reais exigem ativacao explicita do ambiente de producao.
 
 ## Git, Supabase e Vercel
 

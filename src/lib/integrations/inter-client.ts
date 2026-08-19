@@ -1,11 +1,14 @@
-import { interChargeIdempotencyKey, validateChargeDraft, type ChargeDraft } from "@/domains/billing/inter";
-import fs from "node:fs";
+import crypto from "node:crypto";
 import https from "node:https";
+import { interChargeIdempotencyKey, validateChargeDraft, type ChargeDraft } from "@/domains/billing/inter";
+import type { InterRuntimeCredentials } from "@/lib/integrations/inter-credentials";
 
 type JsonRow = Record<string, unknown>;
+type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 const productionBaseUrl = "https://cdpj.partners.bancointer.com.br";
 const sandboxBaseUrl = "https://cdpj-sandbox.partners.uatinter.co";
+const tokenCache = new Map<string, { token: string; expiresAt: number }>();
 
 function clean(value: unknown) {
   return String(value ?? "").trim();
@@ -16,43 +19,31 @@ function onlyDigits(value: unknown) {
 }
 
 function money(value: number) {
-  return (value / 100).toFixed(2);
+  return Number((value / 100).toFixed(2));
 }
 
-function baseUrl() {
-  return process.env.INTER_ENV === "production" ? productionBaseUrl : sandboxBaseUrl;
+function baseUrl(credentials: InterRuntimeCredentials) {
+  return credentials.environment === "production" ? productionBaseUrl : sandboxBaseUrl;
 }
 
-function readBase64(value: string) {
-  return Buffer.from(value, "base64");
-}
-
-function interAgent() {
-  const pfxBase64 = clean(process.env.INTER_PFX_BASE64);
-  const pfxPath = clean(process.env.INTER_CERT_PATH);
-  const passphrase = clean(process.env.INTER_CERT_PASSWORD);
-
-  const pfx = pfxBase64 ? readBase64(pfxBase64) : (pfxPath ? fs.readFileSync(pfxPath) : null);
-  if (!pfx) {
-    throw new Error("Certificado mTLS do Banco Inter nao configurado. Defina INTER_PFX_BASE64 ou INTER_CERT_PATH.");
-  }
-
+function interAgent(credentials: InterRuntimeCredentials) {
   return new https.Agent({
-    pfx,
-    passphrase: passphrase || undefined,
+    pfx: Buffer.from(credentials.pfxBase64, "base64"),
+    passphrase: credentials.pfxPassword || undefined,
     minVersion: "TLSv1.2",
     rejectUnauthorized: true
   });
 }
 
 function requestJson(options: {
-  method: "GET" | "POST";
+  credentials: InterRuntimeCredentials;
+  method: HttpMethod;
   path: string;
   token?: string;
   body?: URLSearchParams | JsonRow;
   accept?: string;
 }) {
-  const target = new URL(`${baseUrl()}${options.path}`);
+  const target = new URL(`${baseUrl(options.credentials)}${options.path}`);
   const isForm = options.body instanceof URLSearchParams;
   const body = options.body
     ? options.body instanceof URLSearchParams ? options.body.toString() : JSON.stringify(options.body)
@@ -64,10 +55,11 @@ function requestJson(options: {
       hostname: target.hostname,
       path: `${target.pathname}${target.search}`,
       method: options.method,
-      agent: interAgent(),
+      agent: interAgent(options.credentials),
       headers: {
         accept: options.accept || "application/json",
         ...(options.token ? { authorization: `Bearer ${options.token}` } : {}),
+        ...(options.credentials.accountNumber ? { "x-conta-corrente": onlyDigits(options.credentials.accountNumber) } : {}),
         ...(body ? {
           "content-type": isForm ? "application/x-www-form-urlencoded" : "application/json",
           "content-length": Buffer.byteLength(body)
@@ -76,13 +68,11 @@ function requestJson(options: {
     }, (response) => {
       const chunks: Buffer[] = [];
       response.on("data", (chunk: Buffer) => chunks.push(chunk));
-      response.on("end", () => {
-        resolve({
-          statusCode: response.statusCode || 500,
-          headers: response.headers as JsonRow,
-          body: Buffer.concat(chunks)
-        });
-      });
+      response.on("end", () => resolve({
+        statusCode: response.statusCode || 500,
+        headers: response.headers as JsonRow,
+        body: Buffer.concat(chunks)
+      }));
     });
 
     request.setTimeout(45000, () => request.destroy(new Error("Tempo limite excedido ao comunicar com o Banco Inter.")));
@@ -97,33 +87,66 @@ function parseJson(buffer: Buffer) {
   try {
     return JSON.parse(buffer.toString("utf8")) as JsonRow;
   } catch {
-    return { raw: buffer.toString("utf8").slice(0, 300) };
+    return { raw: buffer.toString("utf8").slice(0, 500) };
   }
 }
 
-async function getInterToken() {
-  const clientId = clean(process.env.INTER_CLIENT_ID);
-  const clientSecret = clean(process.env.INTER_CLIENT_SECRET);
-  if (!clientId || !clientSecret) throw new Error("Client ID/Secret do Banco Inter nao configurados.");
+function responseError(payload: JsonRow, statusCode: number) {
+  const violations = Array.isArray(payload.violacoes)
+    ? payload.violacoes.map((item) => {
+      const row = item && typeof item === "object" ? item as JsonRow : {};
+      return [clean(row.propriedade), clean(row.razao)].filter(Boolean).join(": ");
+    }).filter(Boolean).join(" | ")
+    : "";
+  return [clean(payload.detail || payload.title || payload.raw), violations].filter(Boolean).join(" | ") || `HTTP ${statusCode}`;
+}
+
+function tokenCacheKey(credentials: InterRuntimeCredentials) {
+  return crypto.createHash("sha256")
+    .update(`${credentials.environment}:${credentials.companyId}:${credentials.clientId}`)
+    .digest("hex");
+}
+
+async function getInterToken(credentials: InterRuntimeCredentials, forceRefresh = false) {
+  const cacheKey = tokenCacheKey(credentials);
+  const cached = tokenCache.get(cacheKey);
+  if (!forceRefresh && cached && cached.expiresAt > Date.now() + 60_000) return cached.token;
 
   const body = new URLSearchParams({
     grant_type: "client_credentials",
-    client_id: clientId,
-    client_secret: clientSecret,
+    client_id: credentials.clientId,
+    client_secret: credentials.clientSecret,
     scope: "boleto-cobranca.read boleto-cobranca.write"
   });
-  const response = await requestJson({ method: "POST", path: "/oauth/v2/token", body });
+  const response = await requestJson({ credentials, method: "POST", path: "/oauth/v2/token", body });
   const payload = parseJson(response.body);
   if (response.statusCode < 200 || response.statusCode >= 300 || !payload.access_token) {
-    throw new Error(`Banco Inter recusou autenticacao: ${clean(payload.detail || payload.title || payload.raw) || `HTTP ${response.statusCode}`}`);
+    throw new Error(`Banco Inter recusou autenticacao: ${responseError(payload, response.statusCode)}`);
   }
-  return clean(payload.access_token);
+
+  const token = clean(payload.access_token);
+  const expiresIn = Math.max(60, Number(payload.expires_in || 3600));
+  tokenCache.set(cacheKey, { token, expiresAt: Date.now() + expiresIn * 1000 });
+  return token;
+}
+
+async function authorizedRequest(credentials: InterRuntimeCredentials, options: {
+  method: HttpMethod;
+  path: string;
+  body?: JsonRow;
+}) {
+  const token = await getInterToken(credentials);
+  let response = await requestJson({ credentials, token, ...options });
+  if (response.statusCode === 401) {
+    response = await requestJson({ credentials, token: await getInterToken(credentials, true), ...options });
+  }
+  return response;
 }
 
 function buildInterChargePayload(draft: ChargeDraft) {
   const payerDocument = onlyDigits(draft.payerDocument);
   return {
-    seuNumero: (draft.seuNumero || draft.entryId).slice(0, 15),
+    seuNumero: (draft.seuNumero || draft.entryId.replace(/\D/g, "")).slice(0, 15) || Date.now().toString().slice(-15),
     valorNominal: money(draft.amountCents),
     dataVencimento: draft.dueDate,
     numDiasAgenda: 60,
@@ -131,44 +154,38 @@ function buildInterChargePayload(draft: ChargeDraft) {
     pagador: {
       cpfCnpj: payerDocument,
       tipoPessoa: payerDocument.length === 11 ? "FISICA" : "JURIDICA",
-      nome: draft.payerName || "Pagador"
+      nome: draft.payerName || "Pagador",
+      ...(draft.payerEmail ? { email: draft.payerEmail } : {})
     },
     mensagem: {
-      linha1: draft.description || "Prestacao de servicos"
+      linha1: (draft.description || "Prestacao de servicos").slice(0, 78)
     }
   };
 }
 
-export async function createInterCharge(draft: ChargeDraft) {
-  const errors = validateChargeDraft(draft);
-  if (errors.length > 0) {
-    return { ok: false, status: "erro_integracao" as const, errors };
-  }
+export async function testInterConnection(credentials: InterRuntimeCredentials) {
+  await getInterToken(credentials, true);
+  return { ok: true, environment: credentials.environment };
+}
+
+export async function createInterCharge(draft: ChargeDraft, credentials: InterRuntimeCredentials) {
+  const errors = validateChargeDraft(draft, credentials.environment);
   const idempotencyKey = interChargeIdempotencyKey(draft);
-  if (process.env.INTER_ENV !== "production") {
+  if (errors.length > 0) return { ok: false, status: "erro_integracao" as const, errors, idempotencyKey };
+  if (credentials.environment === "production" && !credentials.realChargesEnabled) {
     return {
-      ok: true,
-      status: "solicitada" as const,
-      idempotencyKey,
-      provider: "inter-sandbox-mock"
-    };
-  }
-  if (process.env.INTER_REAL_CHARGE !== "true") {
-    return {
-      ok: true,
-      status: "solicitada" as const,
-      idempotencyKey,
-      provider: "inter-production-guard",
-      message: "Cobranca real bloqueada porque INTER_REAL_CHARGE nao esta habilitado."
+      ok: false,
+      status: "erro_integracao" as const,
+      errors: ["Cobranca real bloqueada ate a empresa habilitar explicitamente a producao."],
+      idempotencyKey
     };
   }
 
-  const token = await getInterToken();
-  const response = await requestJson({
+  const requestPayload = buildInterChargePayload(draft);
+  const response = await authorizedRequest(credentials, {
     method: "POST",
     path: "/cobranca/v3/cobrancas",
-    token,
-    body: buildInterChargePayload(draft)
+    body: requestPayload
   });
   const payload = parseJson(response.body);
   const codigoSolicitacao = clean(payload.codigoSolicitacao);
@@ -178,7 +195,7 @@ export async function createInterCharge(draft: ChargeDraft) {
       status: "erro_integracao" as const,
       idempotencyKey,
       provider: "inter",
-      message: clean(payload.detail || payload.title || payload.raw) || `Banco Inter recusou a cobranca (HTTP ${response.statusCode}).`,
+      message: responseError(payload, response.statusCode),
       responsePayload: payload
     };
   }
@@ -189,21 +206,50 @@ export async function createInterCharge(draft: ChargeDraft) {
     idempotencyKey,
     provider: "inter",
     externalId: codigoSolicitacao,
+    requestPayload,
     responsePayload: payload
   };
 }
 
-export async function downloadInterChargePdf(codigoSolicitacao: string) {
-  const token = await getInterToken();
-  const response = await requestJson({
+export async function getInterCharge(codigoSolicitacao: string, credentials: InterRuntimeCredentials) {
+  const response = await authorizedRequest(credentials, {
     method: "GET",
-    path: `/cobranca/v3/cobrancas/${encodeURIComponent(codigoSolicitacao)}/pdf`,
-    token
+    path: `/cobranca/v3/cobrancas/${encodeURIComponent(codigoSolicitacao)}`
+  });
+  const payload = parseJson(response.body);
+  if (response.statusCode < 200 || response.statusCode >= 300) throw new Error(responseError(payload, response.statusCode));
+  return payload;
+}
+
+export async function cancelInterCharge(codigoSolicitacao: string, reason: string, credentials: InterRuntimeCredentials) {
+  const response = await authorizedRequest(credentials, {
+    method: "POST",
+    path: `/cobranca/v3/cobrancas/${encodeURIComponent(codigoSolicitacao)}/cancelar`,
+    body: { motivoCancelamento: reason.slice(0, 50) }
+  });
+  const payload = parseJson(response.body);
+  if (response.statusCode < 200 || response.statusCode >= 300) throw new Error(responseError(payload, response.statusCode));
+  return payload;
+}
+
+export async function downloadInterChargePdf(codigoSolicitacao: string, credentials: InterRuntimeCredentials) {
+  const response = await authorizedRequest(credentials, {
+    method: "GET",
+    path: `/cobranca/v3/cobrancas/${encodeURIComponent(codigoSolicitacao)}/pdf`
   });
   const payload = parseJson(response.body);
   const encoded = clean(payload.pdf || payload.arquivo || payload.base64);
-  if (response.statusCode < 200 || response.statusCode >= 300 || !encoded) {
-    throw new Error(clean(payload.detail || payload.title || payload.raw) || `Banco Inter nao retornou o PDF (HTTP ${response.statusCode}).`);
-  }
+  if (response.statusCode < 200 || response.statusCode >= 300 || !encoded) throw new Error(responseError(payload, response.statusCode));
   return Buffer.from(encoded, "base64");
+}
+
+export async function configureInterWebhook(webhookUrl: string, credentials: InterRuntimeCredentials) {
+  const response = await authorizedRequest(credentials, {
+    method: "PUT",
+    path: "/cobranca/v3/cobrancas/webhook",
+    body: { webhookUrl }
+  });
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw new Error(responseError(parseJson(response.body), response.statusCode));
+  }
 }

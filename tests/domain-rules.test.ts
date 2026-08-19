@@ -11,7 +11,7 @@ import {
   interpretCancellationResponse,
   validateCancellationInput
 } from "../src/lib/integrations/nfse-cancellation.ts";
-import { interChargeIdempotencyKey, validateChargeDraft } from "../src/domains/billing/inter.ts";
+import { interChargeIdempotencyKey, mapInterChargeStatus, validateChargeDraft } from "../src/domains/billing/inter.ts";
 import { assertCannotChangeOwnElevation, can } from "../src/domains/users/permissions.ts";
 import { serviceDeletionBlock } from "../src/domains/services/deletion.ts";
 import {
@@ -269,6 +269,13 @@ test("valida cobranca Inter e idempotencia", () => {
     "Valor da cobranca deve ser maior que zero.",
     "Documento do pagador obrigatorio."
   ]);
+});
+
+test("traduz retorno do Inter para o fluxo financeiro", () => {
+  assert.equal(mapInterChargeStatus("RECEBIDO"), "paga");
+  assert.equal(mapInterChargeStatus("A_RECEBER"), "aguardando_pagamento");
+  assert.equal(mapInterChargeStatus("EXPIRADO"), "vencida");
+  assert.equal(mapInterChargeStatus("CANCELADO"), "cancelada");
 });
 
 test("aplica permissoes por grupo e bloqueia auto-elevacao", () => {

@@ -48,7 +48,7 @@ vercel env add APP_URL
 vercel env add APP_ENV
 ```
 
-Variaveis fiscais, Banco Inter e e-mail devem ficar apenas nos ambientes corretos e nunca no client-side.
+Variaveis fiscais e de e-mail devem ficar apenas nos ambientes corretos e nunca no client-side. O Banco Inter e configurado por tenant no painel, com payload criptografado no Supabase e uso exclusivo no servidor.
 
 ## Ambientes
 
