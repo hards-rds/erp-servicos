@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
         request_payload,
         companies(name,document,fiscal_settings),
         clients(legal_name,document,fiscal_email,phone,address),
-        financial_entries(id,description,competence,net_amount,contracts(fiscal_service_data))
+        financial_entries(id,description,competence,net_amount,status,contracts(fiscal_service_data))
       `)
       .eq("id", nfseDocumentId)
       .eq("company_id", profile.company_id)
@@ -116,6 +116,18 @@ export async function POST(request: NextRequest) {
     });
 
     if (result.ok) {
+      await supabase
+        .from("financial_entries")
+        .update({
+          nfse_document_id: document.id,
+          issued_at: new Date().toISOString().slice(0, 10),
+          ...(entry.status === "previsto" ? { status: "emitido" } : {}),
+          updated_by: profile.id,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", entry.id)
+        .eq("company_id", profile.company_id);
+
       try {
         const generated = await generateAndAttachDanfsePdf(document.id, profile.id);
         const recipient = client.fiscal_email || "";

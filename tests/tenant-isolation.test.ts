@@ -65,3 +65,16 @@ test("operacoes do Inter derivam cobranca e entrada da empresa ativa", () => {
   assert.match(webhook, /getInterCharge\(externalId, credentials\)/);
   assert.match(webhook, /loadActiveInterCredentials\(charge\.company_id\)/);
 });
+
+test("contratos separam emissao fiscal e cobranca sem gerar fluxo no cadastro", () => {
+  const route = readFileSync("src/app/api/cadastros/contratos/route.ts", "utf8");
+  const page = readFileSync("src/app/(dashboard)/cadastros/contratos/page.tsx", "utf8");
+  const emission = readFileSync("src/app/api/fiscal/nfse/emitir/route.ts", "utf8");
+
+  assert.match(route, /action === "issue_nfse"/);
+  assert.match(route, /action === "issue_charge"/);
+  assert.doesNotMatch(route, /action === "generate"/);
+  assert.match(page, /Emitir NFS-e/);
+  assert.match(page, /Emitir boleto/);
+  assert.match(emission, /nfse_document_id: document\.id/);
+});

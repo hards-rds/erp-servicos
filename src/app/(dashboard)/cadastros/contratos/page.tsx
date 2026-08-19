@@ -1,6 +1,6 @@
 import { PageHeader } from "@/components/layout/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
 
 type ContratosPageProps = {
   searchParams?: Promise<{ status?: string; edit?: string }>;
@@ -20,8 +20,6 @@ type ContractRow = {
   due_day: number;
   starts_at: string;
   status: string;
-  auto_issue_nfse: boolean;
-  auto_generate_charge: boolean;
   fiscal_service_data: Record<string, unknown> | null;
   notes: string | null;
   clients: { legal_name: string } | { legal_name: string }[] | null;
@@ -29,11 +27,11 @@ type ContractRow = {
 
 const statusMessages: Record<string, { kind: "success" | "error"; text: string }> = {
   created: { kind: "success", text: "Contrato cadastrado com sucesso." },
-  created_generated: { kind: "success", text: "Contrato cadastrado e fluxo da competencia atual gerado." },
-  generated: { kind: "success", text: "Fluxo da competencia atual gerado/atualizado." },
   updated: { kind: "success", text: "Contrato atualizado. A nota rejeitada ja pode ser processada novamente." },
-  created_flow_error: { kind: "error", text: "Contrato criado, mas houve falha ao gerar o fluxo automatico." },
-  generate_error: { kind: "error", text: "Nao foi possivel gerar o fluxo deste contrato." },
+  charge_issued: { kind: "success", text: "Cobranca enviada ao Banco Inter para processamento." },
+  charge_error: { kind: "error", text: "O Banco Inter nao processou a cobranca. Consulte Boletos/Cobrancas." },
+  inter_inactive: { kind: "error", text: "Banco Inter inativo. A emissao fiscal continua disponivel normalmente." },
+  generate_error: { kind: "error", text: "Nao foi possivel preparar o lancamento desta competencia." },
   inactive: { kind: "error", text: "Somente contratos ativos geram fluxo recorrente." },
   fiscal_invalid: {
     kind: "error",
@@ -98,7 +96,8 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
     );
   }
 
-  const [{ data: clients }, { data: contracts }] = profile?.company_id
+  const service = createServiceClient();
+  const [{ data: clients }, { data: contracts }, { data: interCredential }] = profile?.company_id
     ? await Promise.all([
       supabase
         .from("clients")
@@ -108,12 +107,18 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
         .order("legal_name", { ascending: true }),
       supabase
         .from("contracts")
-        .select("id,client_id,service_description,recurring_amount,periodicity,due_day,starts_at,status,auto_issue_nfse,auto_generate_charge,fiscal_service_data,notes,clients(legal_name)")
+        .select("id,client_id,service_description,recurring_amount,periodicity,due_day,starts_at,status,fiscal_service_data,notes,clients(legal_name)")
         .eq("company_id", profile.company_id)
         .order("created_at", { ascending: false })
-        .limit(50)
+        .limit(50),
+      service.from("api_credentials")
+        .select("id")
+        .eq("company_id", profile.company_id)
+        .eq("provider", "banco_inter")
+        .eq("active", true)
+        .maybeSingle()
     ])
-    : [{ data: [] }, { data: [] }];
+    : [{ data: [] }, { data: [] }, { data: null }];
   const allClients = (clients || []) as ClientRow[];
   const allContracts = (contracts || []) as ContractRow[];
   const editingContract = params?.edit ? allContracts.find((contract) => contract.id === params.edit) : undefined;
@@ -126,7 +131,7 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
       <PageHeader
         area="Cadastros / Contratos"
         title="Contratos recorrentes"
-        description="Base de recorrencia financeira, fiscal e de cobrancas."
+        description="Cadastre a recorrencia e emita NFS-e ou boleto separadamente em cada competencia."
         action={<a className="primary-button button-link" href="/cadastros/clientes">Novo cliente</a>}
       />
       {message ? (
@@ -143,7 +148,6 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
                   <th>Servico</th>
                   <th>Valor</th>
                   <th>Vencimento</th>
-                  <th>Automacoes</th>
                   <th>Status</th>
                   <th>Acoes</th>
                 </tr>
@@ -156,12 +160,6 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
                       <td>{contract.service_description}</td>
                       <td>{formatMoney(contract.recurring_amount)}</td>
                       <td>Dia {contract.due_day}</td>
-                      <td>
-                        {contract.auto_issue_nfse ? "NFS-e" : ""}
-                        {contract.auto_issue_nfse && contract.auto_generate_charge ? " + " : ""}
-                        {contract.auto_generate_charge ? "Boleto Inter" : ""}
-                        {!contract.auto_issue_nfse && !contract.auto_generate_charge ? "-" : ""}
-                      </td>
                       <td><StatusBadge tone={contract.status === "ativo" ? "success" : "neutral"}>{contract.status}</StatusBadge></td>
                       <td>
                         <div className="table-actions">
@@ -172,9 +170,21 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
                             Editar
                           </a>
                           <form action="/api/cadastros/contratos" method="post">
-                            <input type="hidden" name="action" value="generate" />
+                            <input type="hidden" name="action" value="issue_nfse" />
                             <input type="hidden" name="contractId" value={contract.id} />
-                            <button className="ghost-button compact-button" type="submit">Gerar fluxo</button>
+                            <button className="primary-button compact-button" type="submit" disabled={contract.status !== "ativo"}>Emitir NFS-e</button>
+                          </form>
+                          <form action="/api/cadastros/contratos" method="post">
+                            <input type="hidden" name="action" value="issue_charge" />
+                            <input type="hidden" name="contractId" value={contract.id} />
+                            <button
+                              className="ghost-button compact-button"
+                              type="submit"
+                              disabled={contract.status !== "ativo" || !interCredential}
+                              title={!interCredential ? "Banco Inter inativo" : "Emitir boleto Banco Inter"}
+                            >
+                              Emitir boleto
+                            </button>
                           </form>
                         </div>
                       </td>
@@ -182,7 +192,7 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={7}>Nenhum contrato cadastrado.</td>
+                    <td colSpan={6}>Nenhum contrato cadastrado.</td>
                   </tr>
                 )}
               </tbody>
@@ -253,17 +263,6 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
               </select>
             </label>
             <fieldset className="checkbox-panel">
-              <legend>Automacoes ao gerar fluxo</legend>
-              <label className="checkbox-row">
-                <input type="checkbox" name="autoIssueNfse" defaultChecked={editingContract?.auto_issue_nfse ?? true} />
-                <span>Emitir/gerar fila de NFS-e automaticamente</span>
-              </label>
-              <label className="checkbox-row">
-                <input type="checkbox" name="autoGenerateCharge" defaultChecked={editingContract?.auto_generate_charge ?? true} />
-                <span>Gerar boleto/cobranca Banco Inter automaticamente</span>
-              </label>
-            </fieldset>
-            <fieldset className="checkbox-panel">
               <legend>Servico na NFS-e</legend>
               <div className="form-grid">
                 <label>
@@ -274,6 +273,7 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
                     maxLength={6}
                     placeholder="Ex.: 010701"
                     defaultValue={fiscalString(editingFiscal, "serviceCode")}
+                    required
                   />
                 </label>
                 <label>
@@ -311,7 +311,7 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
             </label>
             <div className="table-actions">
               <button className="primary-button" type="submit" disabled={!allClients.length}>
-                {editingContract ? "Salvar contrato" : "Criar contrato e gerar fluxo"}
+                {editingContract ? "Salvar contrato" : "Criar contrato"}
               </button>
               {editingContract ? (
                 <a className="ghost-button button-link" href="/cadastros/contratos">Cancelar</a>

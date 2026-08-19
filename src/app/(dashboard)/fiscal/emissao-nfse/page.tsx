@@ -14,10 +14,11 @@ type NfseRow = {
 };
 
 type EmissaoNfsePageProps = {
-  searchParams?: Promise<{ status?: string; message?: string }>;
+  searchParams?: Promise<{ status?: string; message?: string; documentId?: string }>;
 };
 
 const statusMessages: Record<string, { kind: "success" | "error"; text: string }> = {
+  queued: { kind: "success", text: "Entrada financeira criada e NFS-e preparada. Confirme a emissao na fila fiscal." },
   processed: { kind: "success", text: "NFS-e processada pela inteligencia fiscal." },
   rejected: { kind: "error", text: "NFS-e rejeitada na validacao fiscal. Veja o status da fila." },
   invalid: { kind: "error", text: "Documento fiscal invalido." },

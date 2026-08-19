@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { competenceFromDate, dueDateForCompetence } from "@/lib/dates/competence";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
 import { processInterCharge } from "@/server/services/inter-charge-service";
 
 function readString(formData: FormData, key: string) {
@@ -15,6 +15,13 @@ function parseMoney(value: string) {
 
 function redirectWith(request: NextRequest, status: string) {
   return NextResponse.redirect(new URL(`/cadastros/contratos?status=${status}`, request.url), 303);
+}
+
+function redirectToNfse(request: NextRequest, documentId: string) {
+  const target = new URL("/fiscal/emissao-nfse", request.url);
+  target.searchParams.set("status", "queued");
+  target.searchParams.set("documentId", documentId);
+  return NextResponse.redirect(target, 303);
 }
 
 function collectFiscalServiceData(formData: FormData) {
@@ -33,7 +40,7 @@ function hasValidNfseCodes(fiscalData: ReturnType<typeof collectFiscalServiceDat
   return !fiscalData.nbsCode || /^\d{9}$/.test(fiscalData.nbsCode);
 }
 
-async function generateContractFlow(input: {
+type ContractFlowInput = {
   supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>;
   companyId: string;
   profileId: string;
@@ -42,91 +49,134 @@ async function generateContractFlow(input: {
   description: string;
   amount: number;
   dueDay: number;
-  autoIssueNfse: boolean;
-  autoGenerateCharge: boolean;
-}) {
+};
+
+async function ensureContractEntry(input: ContractFlowInput) {
   const competence = competenceFromDate(new Date());
   const dueDate = dueDateForCompetence(competence, input.dueDay);
   const entryKey = `contract:${input.contractId}:competence:${competence}:due:${dueDate}`;
 
-  const { data: entry, error: entryError } = await input.supabase
+  const { data: existing } = await input.supabase
     .from("financial_entries")
-    .upsert(
-      {
-        company_id: input.companyId,
-        client_id: input.clientId,
-        contract_id: input.contractId,
-        type: "recorrente",
-        description: input.description,
-        competence,
-        issued_at: new Date().toISOString().slice(0, 10),
-        due_date: dueDate,
-        gross_amount: input.amount,
-        discounts: 0,
-        interest: 0,
-        penalty: 0,
-        net_amount: input.amount,
-        status: input.autoGenerateCharge ? "aguardando_pagamento" : "previsto",
-        idempotency_key: entryKey,
-      notes: "Gerado automaticamente a partir de contrato recorrente.",
-        created_by: input.profileId,
-        updated_by: input.profileId,
-        updated_at: new Date().toISOString()
-      },
-      { onConflict: "company_id,idempotency_key" }
-    )
     .select("id")
-    .single();
+    .eq("company_id", input.companyId)
+    .eq("idempotency_key", entryKey)
+    .maybeSingle();
+  if (existing?.id) return { entryId: existing.id, competence, dueDate };
 
-  if (entryError || !entry?.id) return false;
+  const { data: entry, error: entryError } = await input.supabase
+    .from("financial_entries").insert({
+      company_id: input.companyId,
+      client_id: input.clientId,
+      contract_id: input.contractId,
+      type: "recorrente",
+      description: input.description,
+      competence,
+      due_date: dueDate,
+      gross_amount: input.amount,
+      discounts: 0,
+      interest: 0,
+      penalty: 0,
+      net_amount: input.amount,
+      status: "previsto",
+      idempotency_key: entryKey,
+      notes: "Gerado automaticamente a partir de contrato recorrente.",
+      created_by: input.profileId,
+      updated_by: input.profileId
+    }).select("id").single();
 
-  if (input.autoIssueNfse) {
-    const nfseKey = `nfse:${entry.id}:${competence}`;
-    await input.supabase.from("nfse_documents").upsert(
-      {
-        company_id: input.companyId,
-        client_id: input.clientId,
-        financial_entry_id: entry.id,
-        status: "enfileirada",
-        competence,
-        service_amount: input.amount,
-        idempotency_key: nfseKey,
-        request_payload: {
-          source: "contract_recurrence",
-          contractId: input.contractId,
-          financialEntryId: entry.id
-        },
-        updated_at: new Date().toISOString()
-      },
-      { onConflict: "company_id,idempotency_key" }
-    );
-  }
+  if (!entryError && entry?.id) return { entryId: entry.id, competence, dueDate };
 
-  if (input.autoGenerateCharge) {
-    const chargeKey = `inter-charge:${entry.id}:${dueDate}`;
-    const { data: charge, error: chargeError } = await input.supabase.from("boleto_charges").upsert(
-      {
-        company_id: input.companyId,
-        financial_entry_id: entry.id,
-        status: "rascunho",
-        idempotency_key: chargeKey,
-        request_payload: {
-          source: "contract_recurrence",
-          contractId: input.contractId,
-          financialEntryId: entry.id,
-          dueDate,
-          amount: input.amount
-        },
-        updated_at: new Date().toISOString()
-      },
-      { onConflict: "company_id,idempotency_key" }
-    ).select("id").single();
-    if (chargeError || !charge?.id) return false;
-    const interResult = await processInterCharge(input.companyId, charge.id, input.profileId);
-    if (!interResult.ok) return false;
-  }
+  const { data: concurrentEntry } = await input.supabase
+    .from("financial_entries")
+    .select("id")
+    .eq("company_id", input.companyId)
+    .eq("idempotency_key", entryKey)
+    .maybeSingle();
+  return concurrentEntry?.id ? { entryId: concurrentEntry.id, competence, dueDate } : null;
+}
 
-  return true;
+async function ensureContractNfse(input: ContractFlowInput, entry: NonNullable<Awaited<ReturnType<typeof ensureContractEntry>>>) {
+  const nfseKey = `nfse:${entry.entryId}:${entry.competence}`;
+  const { data: existing } = await input.supabase
+    .from("nfse_documents")
+    .select("id")
+    .eq("company_id", input.companyId)
+    .eq("idempotency_key", nfseKey)
+    .maybeSingle();
+  if (existing?.id) return existing.id;
+
+  const { data: document, error } = await input.supabase.from("nfse_documents").insert({
+    company_id: input.companyId,
+    client_id: input.clientId,
+    financial_entry_id: entry.entryId,
+    status: "enfileirada",
+    competence: entry.competence,
+    service_amount: input.amount,
+    idempotency_key: nfseKey,
+    request_payload: {
+      source: "contract_recurrence",
+      contractId: input.contractId,
+      financialEntryId: entry.entryId
+    }
+  }).select("id").single();
+  if (!error && document?.id) return document.id;
+
+  const { data: concurrentDocument } = await input.supabase
+    .from("nfse_documents")
+    .select("id")
+    .eq("company_id", input.companyId)
+    .eq("idempotency_key", nfseKey)
+    .maybeSingle();
+  return concurrentDocument?.id || null;
+}
+
+async function ensureContractCharge(input: ContractFlowInput, entry: NonNullable<Awaited<ReturnType<typeof ensureContractEntry>>>) {
+  const chargeKey = `inter-charge:${entry.entryId}:${entry.dueDate}`;
+  const { data: existing } = await input.supabase
+    .from("boleto_charges")
+    .select("id")
+    .eq("company_id", input.companyId)
+    .eq("idempotency_key", chargeKey)
+    .maybeSingle();
+  if (existing?.id) return existing.id;
+
+  const { data: charge, error } = await input.supabase.from("boleto_charges").insert({
+    company_id: input.companyId,
+    financial_entry_id: entry.entryId,
+    status: "rascunho",
+    idempotency_key: chargeKey,
+    request_payload: {
+      source: "contract_recurrence",
+      contractId: input.contractId,
+      financialEntryId: entry.entryId,
+      dueDate: entry.dueDate,
+      amount: input.amount
+    }
+  }).select("id").single();
+  if (!error && charge?.id) return charge.id;
+
+  const { data: concurrentCharge } = await input.supabase
+    .from("boleto_charges")
+    .select("id")
+    .eq("company_id", input.companyId)
+    .eq("idempotency_key", chargeKey)
+    .maybeSingle();
+  return concurrentCharge?.id || null;
+}
+
+async function loadContractForAction(
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
+  companyId: string,
+  contractId: string
+) {
+  const { data } = await supabase
+    .from("contracts")
+    .select("id,client_id,service_description,recurring_amount,due_day,status,fiscal_service_data")
+    .eq("id", contractId)
+    .eq("company_id", companyId)
+    .maybeSingle();
+  return data;
 }
 
 export async function POST(request: NextRequest) {
@@ -148,27 +198,36 @@ export async function POST(request: NextRequest) {
   const formData = await request.formData();
   const action = readString(formData, "action") || "create";
   const contractId = readString(formData, "contractId");
-  const clientId = readString(formData, "clientId");
-  const serviceDescription = readString(formData, "serviceDescription");
-  const amount = parseMoney(readString(formData, "recurringAmount"));
-  const dueDay = Number(readString(formData, "dueDay"));
-  const autoIssueNfse = formData.get("autoIssueNfse") === "on";
-  const autoGenerateCharge = formData.get("autoGenerateCharge") === "on";
-  const fiscalServiceData = collectFiscalServiceData(formData);
 
-  if (action === "generate") {
+  if (["issue_nfse", "issue_charge"].includes(action)) {
     if (!contractId) return redirectWith(request, "invalid");
-
-    const { data: contract } = await supabase
-      .from("contracts")
-      .select("id,client_id,service_description,recurring_amount,due_day,auto_issue_nfse,auto_generate_charge,status")
-      .eq("id", contractId)
-      .eq("company_id", profile.company_id)
-      .maybeSingle();
-
+    const contract = await loadContractForAction(supabase, profile.company_id, contractId);
     if (!contract || contract.status !== "ativo") return redirectWith(request, "inactive");
 
-    const ok = await generateContractFlow({
+    if (action === "issue_charge") {
+      const service = createServiceClient();
+      const { data: interCredential } = await service
+        .from("api_credentials")
+        .select("id")
+        .eq("company_id", profile.company_id)
+        .eq("provider", "banco_inter")
+        .eq("active", true)
+        .maybeSingle();
+      if (!interCredential) return redirectWith(request, "inter_inactive");
+    }
+
+    if (action === "issue_nfse") {
+      const fiscalData = contract.fiscal_service_data && typeof contract.fiscal_service_data === "object"
+        ? contract.fiscal_service_data as Record<string, unknown>
+        : {};
+      const serviceCode = String(fiscalData.serviceCode || "");
+      const nbsCode = String(fiscalData.nbsCode || "");
+      if (!/^\d{6}$/.test(serviceCode) || (nbsCode && !/^\d{9}$/.test(nbsCode))) {
+        return redirectWith(request, "fiscal_invalid");
+      }
+    }
+
+    const input: ContractFlowInput = {
       supabase,
       companyId: profile.company_id,
       profileId: profile.id,
@@ -176,19 +235,33 @@ export async function POST(request: NextRequest) {
       clientId: contract.client_id,
       description: contract.service_description,
       amount: Number(contract.recurring_amount),
-      dueDay: Number(contract.due_day),
-      autoIssueNfse: Boolean(contract.auto_issue_nfse),
-      autoGenerateCharge: Boolean(contract.auto_generate_charge)
-    });
+      dueDay: Number(contract.due_day)
+    };
+    const entry = await ensureContractEntry(input);
+    if (!entry) return redirectWith(request, "generate_error");
 
-    return redirectWith(request, ok ? "generated" : "generate_error");
+    if (action === "issue_nfse") {
+      const documentId = await ensureContractNfse(input, entry);
+      return documentId ? redirectToNfse(request, documentId) : redirectWith(request, "generate_error");
+    }
+
+    const chargeId = await ensureContractCharge(input, entry);
+    if (!chargeId) return redirectWith(request, "generate_error");
+    const interResult = await processInterCharge(profile.company_id, chargeId, profile.id);
+    return redirectWith(request, interResult.ok ? "charge_issued" : "charge_error");
   }
+
+  const clientId = readString(formData, "clientId");
+  const serviceDescription = readString(formData, "serviceDescription");
+  const amount = parseMoney(readString(formData, "recurringAmount"));
+  const dueDay = Number(readString(formData, "dueDay"));
+  const fiscalServiceData = collectFiscalServiceData(formData);
 
   if (!clientId || !serviceDescription || amount === null || amount <= 0 || !Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31) {
     return redirectWith(request, "invalid");
   }
 
-  if (!hasValidNfseCodes(fiscalServiceData, autoIssueNfse)) {
+  if (!hasValidNfseCodes(fiscalServiceData, true)) {
     return redirectWith(request, "fiscal_invalid");
   }
 
@@ -200,8 +273,8 @@ export async function POST(request: NextRequest) {
     due_day: dueDay,
     starts_at: readString(formData, "startsAt") || new Date().toISOString().slice(0, 10),
     status: readString(formData, "status") || "ativo",
-    auto_issue_nfse: autoIssueNfse,
-    auto_generate_charge: autoGenerateCharge,
+    auto_issue_nfse: false,
+    auto_generate_charge: false,
     fiscal_service_data: fiscalServiceData,
     notes: readString(formData, "notes") || null,
     updated_by: profile.id,
@@ -220,33 +293,13 @@ export async function POST(request: NextRequest) {
     return redirectWith(request, error ? "error" : "updated");
   }
 
-  const { data: contract, error } = await supabase
+  const { error } = await supabase
     .from("contracts")
     .insert({
       company_id: profile.company_id,
       ...contractPayload,
       created_by: profile.id,
-    })
-    .select("id,status")
-    .single();
-
-  if (error || !contract?.id) return redirectWith(request, "error");
-
-  if (contract.status === "ativo") {
-    const ok = await generateContractFlow({
-      supabase,
-      companyId: profile.company_id,
-      profileId: profile.id,
-      contractId: contract.id,
-      clientId,
-      description: serviceDescription,
-      amount,
-      dueDay,
-      autoIssueNfse,
-      autoGenerateCharge
     });
-    return redirectWith(request, ok ? "created_generated" : "created_flow_error");
-  }
 
-  return redirectWith(request, "created");
+  return redirectWith(request, error ? "error" : "created");
 }
