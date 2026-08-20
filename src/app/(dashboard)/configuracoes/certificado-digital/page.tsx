@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/layout/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { inspectRuntimeCertificate } from "@/lib/certificates/runtime-certificate";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type CertificadoDigitalPageProps = {
@@ -35,16 +36,12 @@ export default async function CertificadoDigitalPage({ searchParams }: Certifica
   const { data: profile } = user
     ? await supabase.from("profiles").select("company_id,role,active").eq("id", user.id).maybeSingle()
     : { data: null };
-  const { data: certificate } = profile?.company_id
-    ? await supabase
-        .from("digital_certificates")
-        .select("label,valid_until,active,updated_at")
-        .eq("company_id", profile.company_id)
-        .eq("active", true)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle()
+  const { data: company } = profile?.company_id
+    ? await supabase.from("companies").select("name,document").eq("id", profile.company_id).maybeSingle()
     : { data: null };
+  const certificate = profile?.company_id
+    ? await inspectRuntimeCertificate(profile.company_id)
+    : { configured: false, usable: false, error: "Usuario sem empresa ativa." };
   const isMaster = ["master", "system_admin"].includes(profile?.role || "") && profile?.active !== false;
   const message = params?.status ? statusMessages[params.status] : null;
 
@@ -61,34 +58,52 @@ export default async function CertificadoDigitalPage({ searchParams }: Certifica
       <section className="form-panel">
         <h2>Certificado atual</h2>
         <p>
-          <StatusBadge tone={certificate ? "success" : "warning"}>
-            {certificate ? "configurado" : "nao configurado"}
+          <StatusBadge tone={certificate.usable ? "success" : "warning"}>
+            {certificate.usable ? "pronto para emissao" : certificate.configured ? "requer atencao" : "nao configurado"}
           </StatusBadge>
         </p>
-        {certificate ? (
+        <div className="summary-grid">
+          <div>
+            <span>Empresa ativa</span>
+            <strong>{company?.name || "-"}</strong>
+          </div>
+          <div>
+            <span>CNPJ</span>
+            <strong>{company?.document || "-"}</strong>
+          </div>
+        </div>
+        {certificate.configured ? (
           <div className="summary-grid">
             <div>
               <span>Nome</span>
-              <strong>{certificate.label}</strong>
+              <strong>{certificate.label || "-"}</strong>
             </div>
             <div>
               <span>Validade</span>
-              <strong>{formatDate(certificate.valid_until)}</strong>
+              <strong>{formatDate(certificate.validUntil)}</strong>
+            </div>
+            <div>
+              <span>Uso na NFS-e</span>
+              <strong>{certificate.usable ? "Habilitado para esta empresa" : "Indisponivel"}</strong>
             </div>
           </div>
         ) : null}
-        {!isMaster ? <div className="form-error">Apenas usuarios master podem cadastrar certificados.</div> : null}
-        <form className="form-stack" action="/api/configuracoes/certificado-digital" method="post" encType="multipart/form-data">
-          <label>
-            Arquivo PFX
-            <input name="certificate" type="file" accept=".pfx,.p12" required disabled={!isMaster} />
-          </label>
-          <label>
-            Senha
-            <input name="password" type="password" autoComplete="off" required disabled={!isMaster} />
-          </label>
-          <button className="primary-button" type="submit" disabled={!isMaster}>Validar em sandbox</button>
-        </form>
+        {certificate.error ? <div className="form-error">{certificate.error}</div> : null}
+        {!isMaster ? (
+          <p className="form-note">O certificado pode ser utilizado nas emissoes autorizadas ao seu perfil. Somente usuarios master podem substitui-lo.</p>
+        ) : (
+          <form className="form-stack" action="/api/configuracoes/certificado-digital" method="post" encType="multipart/form-data">
+            <label>
+              Arquivo PFX
+              <input name="certificate" type="file" accept=".pfx,.p12" required />
+            </label>
+            <label>
+              Senha
+              <input name="password" type="password" autoComplete="off" required />
+            </label>
+            <button className="primary-button" type="submit">Validar e substituir certificado</button>
+          </form>
+        )}
       </section>
     </>
   );

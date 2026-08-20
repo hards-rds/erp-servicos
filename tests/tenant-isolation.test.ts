@@ -99,3 +99,15 @@ test("fila fiscal exige conferencia e protege notas autorizadas na limpeza", () 
   assert.match(cancelledFinance, /status: "cancelado"/);
   assert.match(xml, /application\/xml/);
 });
+
+test("status do certificado e validado no servidor para a empresa ativa", () => {
+  const page = readFileSync("src/app/(dashboard)/configuracoes/certificado-digital/page.tsx", "utf8");
+  const runtime = readFileSync("src/lib/certificates/runtime-certificate.ts", "utf8");
+
+  assert.match(page, /inspectRuntimeCertificate\(profile\.company_id\)/);
+  assert.match(page, /pronto para emissao/);
+  assert.doesNotMatch(page, /encrypted_pfx|encrypted_password/);
+  assert.match(runtime, /\.eq\("company_id", companyId\)/);
+  assert.match(runtime, /extractPfxSigningMaterials/);
+  assert.match(runtime, /usable: true/);
+});

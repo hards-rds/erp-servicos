@@ -73,22 +73,24 @@ export async function POST(request: NextRequest) {
 
   try {
     const service = createServiceClient();
-    await service
-      .from("digital_certificates")
-      .update({ active: false, updated_at: new Date().toISOString() })
-      .eq("company_id", actor.company_id)
-      .eq("active", true);
-
-    const { error } = await service.from("digital_certificates").insert({
+    const { data: inserted, error } = await service.from("digital_certificates").insert({
       company_id: actor.company_id,
       label: parsed.label,
       encrypted_pfx: encryptCertificateSecret(pfxBase64),
       encrypted_password: encryptCertificateSecret(password),
       valid_until: parsed.validUntil,
       active: true
-    });
+    }).select("id").single();
 
-    return redirectWith(request, error ? "error" : "saved");
+    if (error || !inserted) return redirectWith(request, "error");
+    await service
+      .from("digital_certificates")
+      .update({ active: false, updated_at: new Date().toISOString() })
+      .eq("company_id", actor.company_id)
+      .eq("active", true)
+      .neq("id", inserted.id);
+
+    return redirectWith(request, "saved");
   } catch {
     return redirectWith(request, "error");
   }
