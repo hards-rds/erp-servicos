@@ -66,14 +66,16 @@ test("operacoes do Inter derivam cobranca e entrada da empresa ativa", () => {
   assert.match(webhook, /loadActiveInterCredentials\(charge\.company_id\)/);
 });
 
-test("contratos separam emissao fiscal e cobranca sem gerar fluxo no cadastro", () => {
+test("contratos permitem financeiro, emissao fiscal e cobranca independentes", () => {
   const route = readFileSync("src/app/api/cadastros/contratos/route.ts", "utf8");
   const page = readFileSync("src/app/(dashboard)/cadastros/contratos/page.tsx", "utf8");
   const emission = readFileSync("src/app/api/fiscal/nfse/emitir/route.ts", "utf8");
 
   assert.match(route, /action === "issue_nfse"/);
   assert.match(route, /action === "issue_charge"/);
-  assert.doesNotMatch(route, /action === "generate"/);
+  assert.match(route, /action === "generate_financial"/);
+  assert.match(route, /hasValidNfseCodes\(fiscalServiceData, false\)/);
+  assert.match(page, /Gerar financeiro/);
   assert.match(page, /Emitir NFS-e/);
   assert.match(page, /Emitir boleto/);
   assert.match(route, /const documentId = await ensureContractNfse\(input, fiscalData\)/);
@@ -81,6 +83,8 @@ test("contratos separam emissao fiscal e cobranca sem gerar fluxo no cadastro", 
   assert.match(emission, /ensureAuthorizedFinancialEntry/);
   assert.match(emission, /result\.status === "autorizada"/);
   assert.match(emission, /nfse_document_id: document\.id/);
+  assert.match(route, /financial_entry_id: financialEntry\?\.id \|\| null/);
+  assert.match(route, /linkContractEntryToNfse/);
 });
 
 test("fila fiscal exige conferencia e protege notas autorizadas na limpeza", () => {

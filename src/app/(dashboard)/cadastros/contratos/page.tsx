@@ -24,6 +24,7 @@ type ContractRow = {
 const statusMessages: Record<string, { kind: "success" | "error"; text: string }> = {
   created: { kind: "success", text: "Contrato cadastrado com sucesso." },
   updated: { kind: "success", text: "Contrato atualizado. A nota rejeitada ja pode ser processada novamente." },
+  financial_generated: { kind: "success", text: "Entrada financeira da competencia gerada e adicionada ao fluxo de caixa." },
   charge_issued: { kind: "success", text: "Cobranca enviada ao Banco Inter para processamento." },
   charge_error: { kind: "error", text: "O Banco Inter nao processou a cobranca. Consulte Boletos/Cobrancas." },
   inter_inactive: { kind: "error", text: "Banco Inter inativo. A emissao fiscal continua disponivel normalmente." },
@@ -104,7 +105,7 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
       <PageHeader
         area="Cadastros / Contratos"
         title="Contratos recorrentes"
-        description="Cadastre a recorrencia e emita NFS-e ou boleto separadamente em cada competencia."
+        description="Gere o financeiro, a NFS-e ou o boleto separadamente em cada competencia."
         action={<a className="primary-button button-link" href="/cadastros/contratos/novo">Novo contrato</a>}
       />
       {message ? (
@@ -141,6 +142,11 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
                           >
                             Editar
                           </a>
+                          <form action="/api/cadastros/contratos" method="post">
+                            <input type="hidden" name="action" value="generate_financial" />
+                            <input type="hidden" name="contractId" value={contract.id} />
+                            <button className="ghost-button compact-button" type="submit" disabled={contract.status !== "ativo"}>Gerar financeiro</button>
+                          </form>
                           <form action="/api/cadastros/contratos" method="post">
                             <input type="hidden" name="action" value="issue_nfse" />
                             <input type="hidden" name="contractId" value={contract.id} />

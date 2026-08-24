@@ -102,7 +102,8 @@ export function ContractForm({
         </select>
       </label>
       <fieldset className="checkbox-panel">
-        <legend>Servico na NFS-e</legend>
+        <legend>Servico na NFS-e (opcional)</legend>
+        <p className="muted">Preencha os codigos fiscais somente se este contrato puder emitir NFS-e.</p>
         <div className="form-grid">
           <label>
             Codigo nacional do servico
@@ -112,7 +113,6 @@ export function ContractForm({
               maxLength={6}
               placeholder="Ex.: 010701"
               defaultValue={fiscalString(fiscal, "serviceCode")}
-              required
             />
           </label>
           <label>
