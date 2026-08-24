@@ -1,4 +1,3 @@
-import { SellerRuleForm } from "@/components/finance/seller-rule-form";
 import { SellerActions } from "@/components/finance/seller-actions";
 import { SellerRuleActions } from "@/components/finance/seller-rule-actions";
 import { PageHeader } from "@/components/layout/page-header";
@@ -86,7 +85,6 @@ export default async function VendedoresPage({ searchParams }: { searchParams?: 
   }
 
   const message = params?.status ? messages[params.status] : null;
-  const activeSellers = sellers.filter((seller) => seller.active);
   const sellerOptions = sellers.map((seller) => ({ id: seller.id, name: seller.name }));
   const profileOptions = profiles.map((item) => ({ id: item.id, name: item.name || item.email }));
   const serviceLabels = new Map((serviceTypeOptions[segment] || serviceTypeOptions.tecnologia).map((item) => [item.value, item.label]));
@@ -97,11 +95,15 @@ export default async function VendedoresPage({ searchParams }: { searchParams?: 
         area="Financeiro / Comissoes / Vendedores"
         title="Vendedores e percentuais"
         description="Cadastre vendedores e defina comissoes para vendas e servicos."
-        action={<a className="ghost-button button-link" href="/financeiro/comissoes">Voltar para comissoes</a>}
+        action={(
+          <div className="page-actions">
+            <a className="ghost-button button-link" href="/financeiro/comissoes/vendedores/percentuais/novo">Novo percentual</a>
+            <a className="primary-button button-link" href="/financeiro/comissoes/vendedores/novo">Novo vendedor</a>
+          </div>
+        )}
       />
       {message ? <div className={message.kind === "success" ? "form-success" : "form-error"}>{message.text}</div> : null}
-      <div className="two-columns">
-        <section className="table-panel">
+      <section className="table-panel">
           <h2>Vendedores cadastrados</h2>
           <div className="table-wrap">
             <table>
@@ -131,30 +133,8 @@ export default async function VendedoresPage({ searchParams }: { searchParams?: 
               </tbody>
             </table>
           </div>
-        </section>
-        <section className="form-panel">
-          <h2>Novo vendedor</h2>
-          <form className="form-stack" action="/api/financeiro/vendedores" method="post">
-            <input type="hidden" name="action" value="create_seller" />
-            <label>Nome<input name="name" required /></label>
-            <div className="form-grid">
-              <label>E-mail<input name="email" type="email" /></label>
-              <label>Telefone<input name="phone" /></label>
-            </div>
-            <label>
-              Usuario vinculado
-              <select name="profileId" defaultValue="">
-                <option value="">Sem acesso ao sistema</option>
-                {profiles.map((item) => <option key={item.id} value={item.id}>{item.name || item.email}</option>)}
-              </select>
-            </label>
-            <label>Observacoes<textarea name="notes" /></label>
-            <button className="primary-button" type="submit">Cadastrar vendedor</button>
-          </form>
-        </section>
-      </div>
-      <div className="two-columns">
-        <section className="table-panel">
+      </section>
+      <section className="table-panel">
           <h2>Percentuais configurados</h2>
           <div className="table-wrap">
             <table>
@@ -198,17 +178,7 @@ export default async function VendedoresPage({ searchParams }: { searchParams?: 
               </tbody>
             </table>
           </div>
-        </section>
-        <section className="form-panel">
-          <h2>Novo percentual</h2>
-          <SellerRuleForm
-            sellers={activeSellers.map((seller) => ({ id: seller.id, name: seller.name }))}
-            products={products}
-            catalogServices={catalogServices}
-            serviceTypes={serviceTypeOptions[segment] || serviceTypeOptions.tecnologia}
-          />
-        </section>
-      </div>
+      </section>
     </>
   );
 }

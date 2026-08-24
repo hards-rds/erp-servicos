@@ -1,5 +1,4 @@
 import { PageHeader } from "@/components/layout/page-header";
-import { CreatePayableForm } from "@/components/finance/create-payable-form";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -75,7 +74,7 @@ export default async function SaidasPage({ searchParams }: SaidasPageProps) {
         area="Financeiro / Saidas"
         title="Saidas e contas a pagar"
         description="Despesas, fornecedores, aprovacao, pagamento e conciliacao."
-        action={<CreatePayableForm />}
+        action={<a className="primary-button button-link" href="/financeiro/saidas/nova">Nova saida</a>}
       />
       {message ? <div className={message.kind === "success" ? "form-success" : "form-error"}>{message.text}</div> : null}
       <section className="table-panel">

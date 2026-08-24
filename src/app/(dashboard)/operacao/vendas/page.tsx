@@ -1,36 +1,9 @@
 import { PageHeader } from "@/components/layout/page-header";
-import { SaleForm } from "@/components/sales/sale-form";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type VendasPageProps = {
   searchParams?: Promise<{ status?: string }>;
-};
-
-type ClientRow = {
-  id: string;
-  legal_name: string;
-};
-
-type ProductRow = {
-  id: string;
-  name: string;
-  sale_price: number | string;
-  current_stock: number | string;
-  unit: string;
-};
-
-type SellerRow = {
-  id: string;
-  name: string | null;
-  email: string;
-};
-
-type CatalogServiceRow = {
-  id: string;
-  name: string;
-  description: string | null;
-  sale_price: number | string;
 };
 
 type SaleRow = {
@@ -74,20 +47,10 @@ export default async function VendasPage({ searchParams }: VendasPageProps) {
     : { data: null };
   const companyId = profile?.company_id;
 
-  const [{ data: clients }, { data: products }, { data: catalogServices }, { data: sales }, { data: sellers }] = companyId
-    ? await Promise.all([
-      supabase.from("clients").select("id,legal_name").eq("company_id", companyId).eq("status", "ativo").order("legal_name"),
-      supabase.from("products").select("id,name,sale_price,current_stock,unit").eq("company_id", companyId).eq("active", true).gt("current_stock", 0).order("name"),
-      supabase.from("service_catalog").select("id,name,description,sale_price").eq("company_id", companyId).eq("active", true).order("name"),
-      supabase.from("sales").select("id,sale_date,description,net_amount,status,clients(legal_name)").eq("company_id", companyId).order("sale_date", { ascending: false }).order("created_at", { ascending: false }).limit(50),
-      supabase.from("commission_sellers").select("id,name,email").eq("company_id", companyId).eq("active", true).order("name")
-    ])
-    : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }];
-  const allClients = (clients || []) as ClientRow[];
-  const allProducts = (products || []) as ProductRow[];
-  const allCatalogServices = (catalogServices || []) as CatalogServiceRow[];
+  const { data: sales } = companyId
+    ? await supabase.from("sales").select("id,sale_date,description,net_amount,status,clients(legal_name)").eq("company_id", companyId).order("sale_date", { ascending: false }).order("created_at", { ascending: false }).limit(50)
+    : { data: [] };
   const allSales = (sales || []) as SaleRow[];
-  const allSellers = (sellers || []) as SellerRow[];
   const message = params?.status ? statusMessages[params.status] : null;
   return (
     <>
@@ -95,11 +58,10 @@ export default async function VendasPage({ searchParams }: VendasPageProps) {
         area="Operacao / Vendas"
         title="Vendas"
         description="Venda de produtos, servicos cadastrados ou atendimentos avulsos."
-        action={<a className="primary-button button-link" href="/operacao/estoque">Ver estoque</a>}
+        action={<a className="primary-button button-link" href="/operacao/vendas/nova">Nova venda</a>}
       />
       {message ? <div className={message.kind === "success" ? "form-success" : "form-error"}>{message.text}</div> : null}
-      <div className="two-columns">
-        <section className="table-panel">
+      <section className="table-panel">
           <h2>Ultimas vendas</h2>
           <div className="table-wrap">
             <table>
@@ -129,28 +91,7 @@ export default async function VendasPage({ searchParams }: VendasPageProps) {
               </tbody>
             </table>
           </div>
-        </section>
-        <section className="form-panel">
-          <h2>Nova venda</h2>
-          <SaleForm
-            clients={allClients.map((client) => ({ id: client.id, name: client.legal_name }))}
-            products={allProducts.map((product) => ({
-              id: product.id,
-              name: product.name,
-              price: Number(product.sale_price),
-              stock: Number(product.current_stock),
-              unit: product.unit
-            }))}
-            catalogServices={allCatalogServices.map((service) => ({
-              id: service.id,
-              name: service.name,
-              description: service.description,
-              price: Number(service.sale_price)
-            }))}
-            sellers={allSellers.map((seller) => ({ id: seller.id, name: seller.name || seller.email }))}
-          />
-        </section>
-      </div>
+      </section>
     </>
   );
 }

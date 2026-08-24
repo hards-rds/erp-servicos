@@ -3,12 +3,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
 
 type ContratosPageProps = {
-  searchParams?: Promise<{ status?: string; edit?: string }>;
-};
-
-type ClientRow = {
-  id: string;
-  legal_name: string;
+  searchParams?: Promise<{ status?: string }>;
 };
 
 type ContractRow = {
@@ -44,19 +39,6 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
 
 function formatMoney(value: number | string) {
   return Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-function formatMoneyInput(value: number | string) {
-  return Number(value).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function fiscalString(data: Record<string, unknown> | null | undefined, key: string, fallback = "") {
-  const value = data?.[key];
-  return typeof value === "string" || typeof value === "number" ? String(value) : fallback;
-}
-
-function fiscalBoolean(data: Record<string, unknown> | null | undefined, key: string) {
-  return data?.[key] === true;
 }
 
 function getClientName(contract: ContractRow) {
@@ -97,14 +79,8 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
   }
 
   const service = createServiceClient();
-  const [{ data: clients }, { data: contracts }, { data: interCredential }] = profile?.company_id
+  const [{ data: contracts }, { data: interCredential }] = profile?.company_id
     ? await Promise.all([
-      supabase
-        .from("clients")
-        .select("id,legal_name")
-        .eq("company_id", profile.company_id)
-        .eq("status", "ativo")
-        .order("legal_name", { ascending: true }),
       supabase
         .from("contracts")
         .select("id,client_id,service_description,recurring_amount,periodicity,due_day,starts_at,status,fiscal_service_data,notes,clients(legal_name)")
@@ -118,13 +94,9 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
         .eq("active", true)
         .maybeSingle()
     ])
-    : [{ data: [] }, { data: [] }, { data: null }];
-  const allClients = (clients || []) as ClientRow[];
+    : [{ data: [] }, { data: null }];
   const allContracts = (contracts || []) as ContractRow[];
-  const editingContract = params?.edit ? allContracts.find((contract) => contract.id === params.edit) : undefined;
-  const editingFiscal = editingContract?.fiscal_service_data;
   const message = params?.status ? statusMessages[params.status] : null;
-  const today = new Date().toISOString().slice(0, 10);
 
   return (
     <>
@@ -132,13 +104,12 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
         area="Cadastros / Contratos"
         title="Contratos recorrentes"
         description="Cadastre a recorrencia e emita NFS-e ou boleto separadamente em cada competencia."
-        action={<a className="primary-button button-link" href="/cadastros/clientes">Novo cliente</a>}
+        action={<a className="primary-button button-link" href="/cadastros/contratos/novo">Novo contrato</a>}
       />
       {message ? (
         <div className={message.kind === "success" ? "form-success" : "form-error"}>{message.text}</div>
       ) : null}
-      <div className="two-columns">
-        <section className="table-panel">
+      <section className="table-panel">
           <h2>Contratos</h2>
           <div className="table-wrap">
             <table>
@@ -165,7 +136,7 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
                         <div className="table-actions">
                           <a
                             className="ghost-button button-link compact-button"
-                            href={`/cadastros/contratos?edit=${contract.id}`}
+                            href={`/cadastros/contratos/${contract.id}/editar`}
                           >
                             Editar
                           </a>
@@ -198,128 +169,7 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
               </tbody>
             </table>
           </div>
-        </section>
-        <section className="form-panel">
-          <h2>{editingContract ? "Editar contrato recorrente" : "Novo contrato recorrente"}</h2>
-          <form className="form-stack" action="/api/cadastros/contratos" method="post">
-            <input type="hidden" name="action" value={editingContract ? "update" : "create"} />
-            {editingContract ? <input type="hidden" name="contractId" value={editingContract.id} /> : null}
-            <label>
-              Cliente
-              <select name="clientId" required defaultValue={editingContract?.client_id || ""}>
-                <option value="" disabled>Selecione um cliente</option>
-                {allClients.map((client) => (
-                  <option key={client.id} value={client.id}>{client.legal_name}</option>
-                ))}
-              </select>
-            </label>
-            {!allClients.length ? <div className="form-error">Cadastre um cliente antes de criar o contrato.</div> : null}
-            <label>
-              Servico recorrente
-              <input
-                name="serviceDescription"
-                placeholder="Ex.: Suporte mensal / mensalidade"
-                defaultValue={editingContract?.service_description}
-                required
-              />
-            </label>
-            <div className="form-grid">
-              <label>
-                Valor mensal
-                <input
-                  name="recurringAmount"
-                  inputMode="decimal"
-                  placeholder="0,00"
-                  defaultValue={editingContract ? formatMoneyInput(editingContract.recurring_amount) : undefined}
-                  required
-                />
-              </label>
-              <label>
-                Dia de vencimento
-                <input name="dueDay" type="number" min={1} max={31} defaultValue={editingContract?.due_day || 10} required />
-              </label>
-            </div>
-            <div className="form-grid">
-              <label>
-                Periodicidade
-                <select name="periodicity" defaultValue={editingContract?.periodicity || "mensal"}>
-                  <option value="mensal">Mensal</option>
-                  <option value="trimestral">Trimestral</option>
-                  <option value="semestral">Semestral</option>
-                  <option value="anual">Anual</option>
-                </select>
-              </label>
-              <label>
-                Inicio
-                <input name="startsAt" type="date" defaultValue={editingContract?.starts_at || today} required />
-              </label>
-            </div>
-            <label>
-              Status
-              <select name="status" defaultValue={editingContract?.status || "ativo"}>
-                <option value="ativo">Ativo</option>
-                <option value="rascunho">Rascunho</option>
-                <option value="suspenso">Suspenso</option>
-              </select>
-            </label>
-            <fieldset className="checkbox-panel">
-              <legend>Servico na NFS-e</legend>
-              <div className="form-grid">
-                <label>
-                  Codigo nacional do servico
-                  <input
-                    name="serviceCode"
-                    inputMode="numeric"
-                    maxLength={6}
-                    placeholder="Ex.: 010701"
-                    defaultValue={fiscalString(editingFiscal, "serviceCode")}
-                    required
-                  />
-                </label>
-                <label>
-                  Codigo municipal do servico
-                  <input
-                    name="municipalServiceCode"
-                    placeholder="Ex.: 001"
-                    defaultValue={fiscalString(editingFiscal, "municipalServiceCode")}
-                  />
-                </label>
-                <label>
-                  Codigo NBS
-                  <input
-                    name="nbsCode"
-                    inputMode="numeric"
-                    pattern="[0-9]{9}"
-                    maxLength={9}
-                    placeholder="Ex.: 123456789"
-                    defaultValue={fiscalString(editingFiscal, "nbsCode")}
-                  />
-                </label>
-              </div>
-              <label className="checkbox-row">
-                <input type="checkbox" name="retainIss" defaultChecked={fiscalBoolean(editingFiscal, "retainIss")} />
-                <span>Reter ISSQN nesta operacao</span>
-              </label>
-            </fieldset>
-            <label>
-              Observacoes
-              <textarea
-                name="notes"
-                placeholder="Regras comerciais, escopo e observacoes internas"
-                defaultValue={editingContract?.notes || ""}
-              />
-            </label>
-            <div className="table-actions">
-              <button className="primary-button" type="submit" disabled={!allClients.length}>
-                {editingContract ? "Salvar contrato" : "Criar contrato"}
-              </button>
-              {editingContract ? (
-                <a className="ghost-button button-link" href="/cadastros/contratos">Cancelar</a>
-              ) : null}
-            </div>
-          </form>
-        </section>
-      </div>
+      </section>
     </>
   );
 }

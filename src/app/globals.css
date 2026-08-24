@@ -780,6 +780,20 @@ tbody tr:last-child td {
   gap: 20px;
 }
 
+.page-form-panel {
+  width: min(100%, 980px);
+  margin-inline: auto;
+  padding: 28px 32px;
+}
+
+.page-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1283,6 +1297,24 @@ tbody tr:last-child td {
 
   .page-actions,
   .page-actions > * {
+    width: 100%;
+  }
+
+  .page-actions .page-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .page-form-panel {
+    padding: 20px 16px;
+  }
+
+  .page-form-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .page-form-actions > * {
     width: 100%;
   }
 

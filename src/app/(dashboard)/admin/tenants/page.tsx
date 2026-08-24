@@ -93,7 +93,7 @@ export default async function TenantsPage({
         area="Admin / Tenants"
         title="Tenants"
         description="Contas SaaS, empresas emitentes e masters de cada cliente."
-        action={isSystemAdmin ? <a className="primary-button button-link" href="#novo-tenant">Novo tenant</a> : null}
+        action={isSystemAdmin ? <a className="primary-button button-link" href="/admin/tenants/novo">Novo tenant</a> : null}
       />
 
       {message ? (
@@ -106,61 +106,6 @@ export default async function TenantsPage({
         </section>
       ) : (
         <>
-          <section className="form-panel" id="novo-tenant">
-            <h2>Novo tenant</h2>
-            <form className="form-stack" action="/api/admin/tenants" method="post">
-              <div className="form-grid">
-                <label>
-                  Nome do tenant
-                  <input name="tenantName" placeholder="Grupo, cliente ou holding" required />
-                </label>
-                <label>
-                  Plano
-                  <select name="plan" defaultValue="starter">
-                    <option value="starter">Starter</option>
-                    <option value="pro">Pro</option>
-                    <option value="enterprise">Enterprise</option>
-                  </select>
-                </label>
-              </div>
-              <div className="form-grid">
-                <label>
-                  Empresa inicial
-                  <input name="companyName" placeholder="Razao social da empresa emitente" required />
-                </label>
-                <label>
-                  CNPJ/CPF da empresa
-                  <input name="companyDocument" inputMode="numeric" placeholder="Somente numeros" />
-                </label>
-              </div>
-              <div className="form-grid">
-                <label>
-                  Segmento
-                  <select name="serviceSegment" defaultValue="tecnologia">
-                    <option value="tecnologia">Tecnologia</option>
-                    <option value="otica">Otica</option>
-                    <option value="generico">Generico</option>
-                  </select>
-                </label>
-                <label>
-                  Master do cliente
-                  <input name="masterName" placeholder="Nome completo" required />
-                </label>
-              </div>
-              <div className="form-grid">
-                <label>
-                  E-mail do master
-                  <input name="masterEmail" type="email" placeholder="master@cliente.com" required />
-                </label>
-                <label>
-                  Senha temporaria
-                  <input name="masterPassword" type="password" minLength={8} autoComplete="new-password" required />
-                </label>
-              </div>
-              <button className="primary-button" type="submit">Criar tenant</button>
-            </form>
-          </section>
-
           <section className="table-panel">
             <h2>Tenants cadastrados</h2>
             <div className="table-wrap">

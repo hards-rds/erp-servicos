@@ -196,7 +196,7 @@ export default async function EmissaoNfsePage({ searchParams }: EmissaoNfsePageP
                     <div className="table-actions">
                       <a className="primary-button button-link compact-button" href={`/fiscal/emissao-nfse?documentId=${document.id}`}>Conferir</a>
                       {document.status === "rejeitada" && getContractId(document) ? (
-                        <a className="ghost-button button-link compact-button" href={`/cadastros/contratos?edit=${getContractId(document)}`}>Corrigir contrato</a>
+                        <a className="ghost-button button-link compact-button" href={`/cadastros/contratos/${getContractId(document)}/editar`}>Corrigir contrato</a>
                       ) : null}
                       {canEdit ? <NfseDeleteTestForm documentId={document.id} /> : null}
                     </div>
