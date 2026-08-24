@@ -10,6 +10,10 @@ const tenantPages = [
   "src/app/(dashboard)/configuracoes/apis/page.tsx",
   "src/app/(dashboard)/configuracoes/usuarios/page.tsx",
   "src/app/(dashboard)/dashboard/page.tsx",
+  "src/app/(dashboard)/escola/atletas/page.tsx",
+  "src/app/(dashboard)/escola/matriculas/page.tsx",
+  "src/app/(dashboard)/escola/presencas/page.tsx",
+  "src/app/(dashboard)/escola/turmas/page.tsx",
   "src/app/(dashboard)/financeiro/boletos-cobrancas/page.tsx",
   "src/app/(dashboard)/financeiro/comissoes/page.tsx",
   "src/app/(dashboard)/financeiro/comissoes/vendedores/page.tsx",
@@ -27,6 +31,31 @@ test("paginas operacionais filtram explicitamente a empresa ativa", () => {
     const source = readFileSync(file, "utf8");
     assert.match(source, /\.eq\("company_id",/, `${file} precisa filtrar company_id`);
   }
+});
+
+test("segmento escolar isola dados, preserva avaliacoes e gera mensalidade idempotente", () => {
+  const migration = readFileSync("supabase/migrations/20260824170000_football_school_segment.sql", "utf8");
+  const enrollmentRoute = readFileSync("src/app/api/escola/matriculas/route.ts", "utf8");
+  const athleteRoute = readFileSync("src/app/api/escola/atletas/route.ts", "utf8");
+  const navigation = readFileSync("src/components/layout/app-shell-client.tsx", "utf8");
+
+  for (const table of [
+    "school_guardians",
+    "school_athletes",
+    "school_classes",
+    "school_enrollments",
+    "school_attendance"
+  ]) {
+    assert.match(migration, new RegExp(`create policy ${table}_[\\s\\S]*?public\\.company_match\\(company_id\\)`));
+  }
+  assert.match(migration, /create policy school_evaluations_select/);
+  assert.match(migration, /create policy school_evaluations_insert/);
+  assert.doesNotMatch(migration, /create policy school_evaluations_update/);
+  assert.match(enrollmentRoute, /school-enrollment:\$\{enrollment\.id\}:competence:\$\{competence\}/);
+  assert.match(enrollmentRoute, /school_enrollment_id: enrollment\.id/);
+  assert.match(enrollmentRoute, /onConflict: "company_id,idempotency_key"/);
+  assert.match(athleteRoute, /school_athlete_evaluations/);
+  assert.match(navigation, /onlyForSegments: \["escola_futebol"\]/);
 });
 
 test("RLS operacional nao concede acesso global ao system_admin", () => {

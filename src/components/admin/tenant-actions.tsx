@@ -88,6 +88,7 @@ export function TenantActions({ tenant, company, master }: TenantActionsProps) {
               <select name="serviceSegment" defaultValue={company.serviceSegment || "generico"}>
                 <option value="tecnologia">Tecnologia</option>
                 <option value="otica">Otica</option>
+                <option value="escola_futebol">Escola de futebol</option>
                 <option value="generico">Generico</option>
               </select>
             </label>

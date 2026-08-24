@@ -1,4 +1,4 @@
-export type ServiceSegment = "tecnologia" | "otica" | "generico";
+export type ServiceSegment = "tecnologia" | "otica" | "escola_futebol" | "generico";
 
 export const serviceTypeOptions: Record<ServiceSegment, { value: string; label: string }[]> = {
   tecnologia: [
@@ -19,6 +19,14 @@ export const serviceTypeOptions: Record<ServiceSegment, { value: string; label: 
     { value: "garantia", label: "Garantia" },
     { value: "avulso", label: "Avulso" }
   ],
+  escola_futebol: [
+    { value: "mensalidade", label: "Mensalidade" },
+    { value: "treino_individual", label: "Treino individual" },
+    { value: "avaliacao", label: "Avaliacao esportiva" },
+    { value: "clinica", label: "Clinica de futebol" },
+    { value: "torneio", label: "Torneio" },
+    { value: "avulso", label: "Avulso" }
+  ],
   generico: [
     { value: "avulso", label: "Avulso" },
     { value: "recorrente", label: "Recorrente" },
@@ -30,5 +38,6 @@ export const serviceTypeOptions: Record<ServiceSegment, { value: string; label: 
 export const segmentLabels: Record<ServiceSegment, string> = {
   tecnologia: "Tecnologia",
   otica: "Otica",
+  escola_futebol: "Escola de futebol",
   generico: "Generico"
 };

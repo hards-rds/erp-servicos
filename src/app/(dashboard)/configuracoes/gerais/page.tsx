@@ -63,6 +63,7 @@ export default async function GeraisPage({ searchParams }: GeraisPageProps) {
             <select name="serviceSegment" defaultValue={company?.service_segment || "tecnologia"} disabled={!isMaster}>
               <option value="tecnologia">Tecnologia</option>
               <option value="otica">Otica</option>
+              <option value="escola_futebol">Escola de futebol</option>
               <option value="generico">Generico / outros servicos</option>
             </select>
           </label>

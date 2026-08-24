@@ -12,11 +12,13 @@ import {
   Building2,
   Building,
   ChartNoAxesCombined,
+  CalendarCheck2,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
   FilePlus2,
   FileText,
+  GraduationCap,
   HandCoins,
   LayoutDashboard,
   LogOut,
@@ -28,6 +30,8 @@ import {
   Settings,
   ShieldCheck,
   ShoppingCart,
+  NotebookTabs,
+  Trophy,
   UserRoundCog,
   Users,
   WalletCards,
@@ -45,8 +49,17 @@ const nav = [
     title: "Cadastros",
     items: [
       { href: "/cadastros/clientes", label: "Clientes", icon: Building2 },
-      { href: "/cadastros/servicos", label: "Servicos", icon: ClipboardList },
-      { href: "/cadastros/contratos", label: "Contratos", icon: FileText, hiddenForSegments: ["otica"] }
+      { href: "/cadastros/servicos", label: "Servicos", icon: ClipboardList, hiddenForSegments: ["escola_futebol"] },
+      { href: "/cadastros/contratos", label: "Contratos", icon: FileText, hiddenForSegments: ["otica", "escola_futebol"] }
+    ]
+  },
+  {
+    title: "Escola",
+    items: [
+      { href: "/escola/atletas", label: "Atletas", icon: GraduationCap, onlyForSegments: ["escola_futebol"] },
+      { href: "/escola/turmas", label: "Turmas", icon: Trophy, onlyForSegments: ["escola_futebol"] },
+      { href: "/escola/matriculas", label: "Matriculas", icon: NotebookTabs, onlyForSegments: ["escola_futebol"] },
+      { href: "/escola/presencas", label: "Presencas", icon: CalendarCheck2, onlyForSegments: ["escola_futebol"] }
     ]
   },
   {
@@ -104,6 +117,7 @@ type AppShellClientProps = {
 const segmentLabels: Record<string, string> = {
   tecnologia: "Tecnologia",
   otica: "Otica",
+  escola_futebol: "Escola de futebol",
   generico: "Generico"
 };
 
@@ -122,7 +136,11 @@ export function AppShellClient({
   const segmentNav = nav
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => !item.hiddenForSegments?.includes(activeCompanySegment || ""))
+      items: group.items.filter((item) => {
+        const visibility = item as typeof item & { hiddenForSegments?: string[]; onlyForSegments?: string[] };
+        if (visibility.hiddenForSegments?.includes(activeCompanySegment || "")) return false;
+        return !visibility.onlyForSegments || visibility.onlyForSegments.includes(activeCompanySegment || "");
+      })
     }))
     .filter((group) => group.items.length);
   const visibleNav = isSystemAdmin

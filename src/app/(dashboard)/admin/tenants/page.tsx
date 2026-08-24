@@ -47,6 +47,7 @@ const messages: Record<string, { type: "success" | "error"; text: string }> = {
 const segmentLabels: Record<string, string> = {
   tecnologia: "Tecnologia",
   otica: "Otica",
+  escola_futebol: "Escola de futebol",
   generico: "Generico"
 };
 

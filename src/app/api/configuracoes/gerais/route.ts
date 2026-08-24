@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
 import { onlyDigits } from "@/lib/validations/br-documents";
 
-const segments = new Set(["tecnologia", "otica", "generico"]);
+const segments = new Set(["tecnologia", "otica", "escola_futebol", "generico"]);
 const simpleNationalStatuses = new Set(["1", "2", "3"]);
 const assessmentRegimes = new Set(["1", "2", "3"]);
 const specialTaxRegimes = new Set(["0", "1", "2", "3", "4", "5", "6", "9"]);

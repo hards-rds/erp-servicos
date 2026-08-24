@@ -17,7 +17,7 @@ export default async function NovoTenantPage() {
               <label>Plano<select name="plan" defaultValue="starter"><option value="starter">Starter</option><option value="pro">Pro</option><option value="enterprise">Enterprise</option></select></label>
               <label>Empresa inicial<input name="companyName" placeholder="Razao social da empresa emitente" required /></label>
               <label>CNPJ/CPF da empresa<input name="companyDocument" inputMode="numeric" placeholder="Somente numeros" /></label>
-              <label>Segmento<select name="serviceSegment" defaultValue="tecnologia"><option value="tecnologia">Tecnologia</option><option value="otica">Otica</option><option value="generico">Generico</option></select></label>
+              <label>Segmento<select name="serviceSegment" defaultValue="tecnologia"><option value="tecnologia">Tecnologia</option><option value="otica">Otica</option><option value="escola_futebol">Escola de futebol</option><option value="generico">Generico</option></select></label>
               <label>Master do cliente<input name="masterName" placeholder="Nome completo" required /></label>
               <label>E-mail do master<input name="masterEmail" type="email" placeholder="master@cliente.com" required /></label>
               <label>Senha temporaria<input name="masterPassword" type="password" minLength={8} autoComplete="new-password" required /></label>
