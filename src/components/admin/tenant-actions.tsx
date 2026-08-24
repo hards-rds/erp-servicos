@@ -36,7 +36,7 @@ export function TenantActions({ tenant, company, master }: TenantActionsProps) {
         onClick={() => dialogRef.current?.showModal()}
       >
         <Pencil aria-hidden="true" size={16} />
-        Editar
+        Editar {company.name}
       </button>
       <dialog className="action-dialog tenant-dialog" ref={dialogRef} aria-labelledby={`edit-tenant-${tenant.id}`}>
         <div className="dialog-header">

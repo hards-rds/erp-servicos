@@ -1,6 +1,7 @@
 import { TenantActions } from "@/components/admin/tenant-actions";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
 
 type TenantRow = {
@@ -142,9 +143,9 @@ export default async function TenantsPage({
                       <td>{tenant.tenant_members?.length || 0}</td>
                       <td>
                         {(tenant.companies || []).length ? (
-                          <div className="table-actions">
+                          <RowActionsMenu label={`Acoes do tenant ${tenant.name}`}>
                             {(tenant.companies || []).map((company) => (
-                              <div className="table-actions" key={company.id}>
+                              <div className="tenant-company-actions" key={company.id}>
                                 <TenantActions
                                   tenant={{
                                     id: tenant.id,
@@ -169,7 +170,7 @@ export default async function TenantsPage({
                                 </form>
                               </div>
                             ))}
-                          </div>
+                          </RowActionsMenu>
                         ) : "-"}
                       </td>
                     </tr>

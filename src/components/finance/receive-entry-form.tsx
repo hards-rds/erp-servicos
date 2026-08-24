@@ -2,6 +2,7 @@
 
 import { Banknote, X } from "lucide-react";
 import { useRef } from "react";
+import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 
 type ReceiveEntryFormProps = {
   entryId: string;
@@ -18,7 +19,7 @@ export function ReceiveEntryForm({ entryId, description, amount }: ReceiveEntryF
   const today = new Date().toISOString().slice(0, 10);
 
   return (
-    <>
+    <RowActionsMenu label={`Acoes da entrada ${description}`}>
       <button
         className="ghost-button compact-button button-with-icon"
         type="button"
@@ -88,6 +89,6 @@ export function ReceiveEntryForm({ entryId, description, amount }: ReceiveEntryF
           </div>
         </form>
       </dialog>
-    </>
+    </RowActionsMenu>
   );
 }

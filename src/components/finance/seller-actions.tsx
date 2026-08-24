@@ -2,6 +2,7 @@
 
 import { Pencil, X } from "lucide-react";
 import { useRef } from "react";
+import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 
 type ProfileOption = { id: string; name: string };
 
@@ -23,7 +24,7 @@ export function SellerActions({
   const dialogRef = useRef<HTMLDialogElement>(null);
 
   return (
-    <div className="table-actions">
+    <RowActionsMenu label={`Acoes do vendedor ${seller.name}`}>
       <button
         className="ghost-button compact-button button-with-icon"
         type="button"
@@ -70,6 +71,6 @@ export function SellerActions({
           </div>
         </form>
       </dialog>
-    </div>
+    </RowActionsMenu>
   );
 }

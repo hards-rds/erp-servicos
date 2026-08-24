@@ -2,6 +2,7 @@
 
 import { Download, RefreshCw, Send, X, XCircle } from "lucide-react";
 import { useRef } from "react";
+import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 
 export function InterChargeActions({
   chargeId,
@@ -18,7 +19,7 @@ export function InterChargeActions({
   const canCancel = Boolean(externalId && !["paga", "cancelada", "conciliada"].includes(status));
 
   return (
-    <div className="table-actions">
+    <RowActionsMenu label="Acoes da cobranca">
       <form action="/api/billing/inter/charges" method="post">
         <input type="hidden" name="action" value={externalId ? "sync" : "process"} />
         <input type="hidden" name="chargeId" value={chargeId} />
@@ -61,6 +62,6 @@ export function InterChargeActions({
           </dialog>
         </>
       ) : null}
-    </div>
+    </RowActionsMenu>
   );
 }

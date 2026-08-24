@@ -1,6 +1,7 @@
 import { PageHeader } from "@/components/layout/page-header";
 import { NfseCancelForm } from "@/components/fiscal/nfse-cancel-form";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type NfseRow = {
@@ -108,7 +109,7 @@ export default async function NotasEmitidasPage({ searchParams }: NotasEmitidasP
                     <td>{formatMoney(document.service_amount)}</td>
                     <td><StatusBadge tone={getTone(document.status)}>{document.status}</StatusBadge></td>
                     <td>
-                      <div className="table-actions">
+                      <RowActionsMenu label={`Acoes da NFS-e de ${getClientName(document)}`}>
                         {["autorizada", "cancelada"].includes(document.status) ? (
                           <>
                             <a className="ghost-button compact-button button-link" href={`/api/fiscal/nfse/xml?id=${document.id}`}>
@@ -133,7 +134,7 @@ export default async function NotasEmitidasPage({ searchParams }: NotasEmitidasP
                         {document.status === "autorizada" && canCancel ? (
                           <NfseCancelForm documentId={document.id} enabled={cancellationEnabled} />
                         ) : null}
-                      </div>
+                      </RowActionsMenu>
                     </td>
                   </tr>
                 ))

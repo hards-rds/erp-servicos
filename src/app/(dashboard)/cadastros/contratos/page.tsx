@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/layout/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
 
 type ContratosPageProps = {
@@ -133,7 +134,7 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
                       <td>Dia {contract.due_day}</td>
                       <td><StatusBadge tone={contract.status === "ativo" ? "success" : "neutral"}>{contract.status}</StatusBadge></td>
                       <td>
-                        <div className="table-actions">
+                        <RowActionsMenu label={`Acoes do contrato de ${getClientName(contract)}`}>
                           <a
                             className="ghost-button button-link compact-button"
                             href={`/cadastros/contratos/${contract.id}/editar`}
@@ -157,7 +158,7 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
                               Emitir boleto
                             </button>
                           </form>
-                        </div>
+                        </RowActionsMenu>
                       </td>
                     </tr>
                   ))

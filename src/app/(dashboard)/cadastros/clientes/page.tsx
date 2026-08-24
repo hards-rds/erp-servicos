@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/layout/page-header";
+import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type ClientesPageProps = { searchParams?: Promise<{ status?: string }> };
@@ -76,14 +77,14 @@ export default async function ClientesPage({ searchParams }: ClientesPageProps) 
                   <td>{client.phone || "-"}</td>
                   <td><span className="badge success">{client.status}</span></td>
                   <td>
-                    <div className="row-actions">
+                    <RowActionsMenu label={`Acoes do cliente ${client.legal_name}`}>
                       <a className="ghost-button button-link compact-button" href={`/cadastros/clientes/${client.id}/editar`}>Editar</a>
                       <form action="/api/cadastros/clientes" method="post">
                         <input type="hidden" name="action" value="delete" />
                         <input type="hidden" name="clientId" value={client.id} />
                         <button className="danger-button compact-button" type="submit">Excluir</button>
                       </form>
-                    </div>
+                    </RowActionsMenu>
                   </td>
                 </tr>
               )) : <tr><td colSpan={6}>Nenhum cliente cadastrado.</td></tr>}

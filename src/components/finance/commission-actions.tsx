@@ -2,6 +2,7 @@
 
 import { Banknote, Check, X, XCircle } from "lucide-react";
 import { useRef } from "react";
+import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 
 type CommissionActionsProps = {
   commissionId: string;
@@ -21,7 +22,7 @@ export function CommissionActions({ commissionId, description, amount, status }:
   if (!["pendente", "aprovada"].includes(status)) return <span className="muted">-</span>;
 
   return (
-    <div className="table-actions">
+    <RowActionsMenu label={`Acoes da comissao ${description}`}>
       {status === "pendente" ? (
         <form action="/api/financeiro/comissoes" method="post">
           <input type="hidden" name="action" value="approve" />
@@ -96,10 +97,11 @@ export function CommissionActions({ commissionId, description, amount, status }:
       >
         <input type="hidden" name="action" value="cancel" />
         <input type="hidden" name="commissionId" value={commissionId} />
-        <button className="icon-button" type="submit" title="Cancelar comissao" aria-label="Cancelar comissao">
+        <button className="danger-button compact-button button-with-icon" type="submit">
           <XCircle aria-hidden="true" size={17} />
+          Cancelar
         </button>
       </form>
-    </div>
+    </RowActionsMenu>
   );
 }

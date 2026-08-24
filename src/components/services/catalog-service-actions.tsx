@@ -2,6 +2,7 @@
 
 import { Pencil, X } from "lucide-react";
 import { useRef } from "react";
+import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 
 type ServiceTypeOption = { value: string; label: string };
 
@@ -30,7 +31,7 @@ export function CatalogServiceActions({
   };
 
   return (
-    <div className="table-actions">
+    <RowActionsMenu label={`Acoes do servico ${service.name}`}>
       <button className="ghost-button compact-button button-with-icon" type="button" onClick={() => dialogRef.current?.showModal()}>
         <Pencil aria-hidden="true" size={16} />
         Editar
@@ -85,6 +86,6 @@ export function CatalogServiceActions({
           </div>
         </form>
       </dialog>
-    </div>
+    </RowActionsMenu>
   );
 }

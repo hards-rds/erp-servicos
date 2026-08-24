@@ -3,6 +3,7 @@
 import { Pencil, X } from "lucide-react";
 import { useRef } from "react";
 import { SellerRuleForm } from "@/components/finance/seller-rule-form";
+import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 
 type Option = { id: string; name: string };
 type ServiceOption = { value: string; label: string };
@@ -31,7 +32,7 @@ export function SellerRuleActions({
   const dialogRef = useRef<HTMLDialogElement>(null);
 
   return (
-    <div className="table-actions">
+    <RowActionsMenu label="Acoes do percentual">
       <button className="ghost-button compact-button button-with-icon" type="button" onClick={() => dialogRef.current?.showModal()}>
         <Pencil aria-hidden="true" size={16} />
         Editar
@@ -53,6 +54,6 @@ export function SellerRuleActions({
         </div>
         <SellerRuleForm sellers={sellers} products={products} catalogServices={catalogServices} serviceTypes={serviceTypes} rule={rule} />
       </dialog>
-    </div>
+    </RowActionsMenu>
   );
 }

@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/layout/page-header";
+import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 import { CatalogServiceActions } from "@/components/services/catalog-service-actions";
 import { DeleteServiceButton } from "@/components/services/delete-service-button";
 import { canDeleteServiceStatus } from "@/domains/services/deletion";
@@ -91,7 +92,7 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
             <tbody>{allServices.length ? allServices.map((service) => (
               <tr key={service.id}>
                 <td>{getClient(service)?.legal_name || "-"}</td><td>{service.service_description}</td><td>{service.service_type}</td><td>{formatMoney(service.amount)}</td><td>{formatDate(service.service_date)}</td><td>{detailsSummary(service) || "-"}</td><td><span className="badge warning">{service.status}</span></td>
-                <td><div className="table-actions"><a className="ghost-button button-link compact-button" href={`/cadastros/servicos/atendimentos/${service.id}/editar`}>Evoluir</a><form action="/api/cadastros/servicos" method="post"><input type="hidden" name="action" value="delete" /><input type="hidden" name="serviceId" value={service.id} /><DeleteServiceButton disabled={!canDeleteServiceStatus(service.status)} /></form></div></td>
+                <td><RowActionsMenu label={`Acoes do atendimento ${service.service_description}`}><a className="ghost-button button-link compact-button" href={`/cadastros/servicos/atendimentos/${service.id}/editar`}>Evoluir</a><form action="/api/cadastros/servicos" method="post"><input type="hidden" name="action" value="delete" /><input type="hidden" name="serviceId" value={service.id} /><DeleteServiceButton disabled={!canDeleteServiceStatus(service.status)} /></form></RowActionsMenu></td>
               </tr>
             )) : <tr><td colSpan={8}>Nenhum atendimento cadastrado.</td></tr>}</tbody>
           </table></div>

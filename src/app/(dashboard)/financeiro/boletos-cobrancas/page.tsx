@@ -1,5 +1,6 @@
 import { InterChargeActions } from "@/components/finance/inter-charge-actions";
 import { PageHeader } from "@/components/layout/page-header";
+import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
 
@@ -132,7 +133,7 @@ export default async function BoletosCobrancasPage({ searchParams }: PageProps) 
                 return (
                   <tr key={entry.id}>
                     <td>{client?.legal_name || "-"}</td><td>{entry.description}</td><td>{formatDate(entry.due_date)}</td><td>{formatMoney(entry.net_amount)}</td>
-                    <td><form action="/api/billing/inter/charges" method="post"><input type="hidden" name="action" value="create" /><input type="hidden" name="entryId" value={entry.id} /><button className="primary-button compact-button" type="submit" disabled={!interCredential}>Gerar cobranca</button></form></td>
+                    <td><RowActionsMenu label={`Acoes da entrada ${entry.description}`}><form action="/api/billing/inter/charges" method="post"><input type="hidden" name="action" value="create" /><input type="hidden" name="entryId" value={entry.id} /><button className="primary-button compact-button" type="submit" disabled={!interCredential}>Gerar cobranca</button></form></RowActionsMenu></td>
                   </tr>
                 );
               }) : <tr><td colSpan={5}>Todas as entradas elegiveis ja possuem cobranca.</td></tr>}

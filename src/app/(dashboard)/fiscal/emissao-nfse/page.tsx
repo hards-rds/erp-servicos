@@ -2,6 +2,7 @@ import { NfseDeleteTestForm } from "@/components/fiscal/nfse-delete-test-form";
 import { NfseProcessForm } from "@/components/fiscal/nfse-process-form";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 import { mergeNfseFiscalData } from "@/lib/integrations/nfse-national";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -193,13 +194,13 @@ export default async function EmissaoNfsePage({ searchParams }: EmissaoNfsePageP
                     {document.rejection_message ? <div className="table-error-detail">{document.rejection_message}</div> : null}
                   </td>
                   <td>
-                    <div className="table-actions">
+                    <RowActionsMenu label={`Acoes da NFS-e de ${getClient(document)?.legal_name || "cliente"}`}>
                       <a className="primary-button button-link compact-button" href={`/fiscal/emissao-nfse?documentId=${document.id}`}>Conferir</a>
                       {document.status === "rejeitada" && getContractId(document) ? (
                         <a className="ghost-button button-link compact-button" href={`/cadastros/contratos/${getContractId(document)}/editar`}>Corrigir contrato</a>
                       ) : null}
                       {canEdit ? <NfseDeleteTestForm documentId={document.id} /> : null}
-                    </div>
+                    </RowActionsMenu>
                   </td>
                 </tr>
               )) : (
@@ -236,7 +237,7 @@ export default async function EmissaoNfsePage({ searchParams }: EmissaoNfsePageP
                   <td>{formatMoney(document.service_amount)}</td>
                   <td><StatusBadge tone={getTone(document.status)}>{document.status}</StatusBadge></td>
                   <td>
-                    <div className="table-actions">
+                    <RowActionsMenu label={`Downloads da NFS-e de ${getClient(document)?.legal_name || "cliente"}`}>
                       <a className="ghost-button button-link compact-button" href={`/api/fiscal/nfse/xml?id=${document.id}`}>XML</a>
                       <a className="ghost-button button-link compact-button" href={`/api/fiscal/nfse/danfse?id=${document.id}`}>DANFSe</a>
                       {canEdit && document.status === "cancelada" ? (
@@ -245,7 +246,7 @@ export default async function EmissaoNfsePage({ searchParams }: EmissaoNfsePageP
                           <button className="ghost-button compact-button" type="submit">Retirar do financeiro</button>
                         </form>
                       ) : null}
-                    </div>
+                    </RowActionsMenu>
                   </td>
                 </tr>
               )) : (

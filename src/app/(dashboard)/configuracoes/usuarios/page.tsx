@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/layout/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type UserGroupRow = {
@@ -191,14 +192,16 @@ export default async function UsuariosPage({
                       <td><StatusBadge tone={item.active ? "success" : "neutral"}>{item.active ? "ativo" : "inativo"}</StatusBadge></td>
                       <td>
                         {isMaster && item.id !== user?.id ? (
-                          <form action="/api/users" method="post">
-                            <input type="hidden" name="action" value="status" />
-                            <input type="hidden" name="userId" value={item.id} />
-                            <input type="hidden" name="active" value={item.active ? "false" : "true"} />
-                            <button className="ghost-button compact-button" type="submit">
-                              {item.active ? "Desativar" : "Ativar"}
-                            </button>
-                          </form>
+                          <RowActionsMenu label={`Acoes do usuario ${item.name || item.email}`}>
+                            <form action="/api/users" method="post">
+                              <input type="hidden" name="action" value="status" />
+                              <input type="hidden" name="userId" value={item.id} />
+                              <input type="hidden" name="active" value={item.active ? "false" : "true"} />
+                              <button className="ghost-button compact-button" type="submit">
+                                {item.active ? "Desativar" : "Ativar"}
+                              </button>
+                            </form>
+                          </RowActionsMenu>
                         ) : (
                           <span className="muted">-</span>
                         )}
