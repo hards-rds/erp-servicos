@@ -1,5 +1,5 @@
 import { PageHeader } from "@/components/layout/page-header";
-import { ReceiveEntryForm } from "@/components/finance/receive-entry-form";
+import { EntryActions } from "@/components/finance/receive-entry-form";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -24,7 +24,14 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   received: { kind: "success", text: "Baixa registrada e entrada marcada como recebida." },
   invalid: { kind: "error", text: "Revise lancamento, valor e forma de pagamento." },
   receive_error: { kind: "error", text: "Nao foi possivel registrar a baixa agora." },
-  profile_error: { kind: "error", text: "Seu usuario ainda nao esta vinculado a uma empresa." }
+  profile_error: { kind: "error", text: "Seu usuario ainda nao esta vinculado a uma empresa." },
+  deleted: { kind: "success", text: "Entrada excluida com sucesso." },
+  delete_invalid: { kind: "error", text: "Nao foi possivel identificar a entrada para excluir." },
+  delete_not_found: { kind: "error", text: "Entrada nao encontrada na empresa ativa ou ja excluida." },
+  delete_settled: { kind: "error", text: "Entradas recebidas ou conciliadas devem permanecer no historico financeiro." },
+  delete_linked: { kind: "error", text: "Esta entrada esta vinculada a uma nota fiscal, boleto, conciliacao ou venda e nao pode ser excluida." },
+  delete_forbidden: { kind: "error", text: "Seu usuario nao possui permissao para excluir entradas." },
+  delete_error: { kind: "error", text: "Nao foi possivel excluir a entrada agora." }
 };
 
 function formatMoney(value: number | string) {
@@ -112,13 +119,13 @@ export default async function EntradasPage({ searchParams }: EntradasPageProps) 
                     </td>
                     <td><StatusBadge tone={getTone(entry.status)}>{entry.status}</StatusBadge></td>
                     <td>
-                      {canReceive(entry) ? (
-                        <ReceiveEntryForm
-                          entryId={entry.id}
-                          description={entry.description}
-                          amount={entry.net_amount}
-                        />
-                      ) : "-"}
+                      <EntryActions
+                        entryId={entry.id}
+                        description={entry.description}
+                        amount={entry.net_amount}
+                        canReceive={canReceive(entry)}
+                        canDelete={!entry.received_at && !["recebido", "conciliado"].includes(entry.status)}
+                      />
                     </td>
                   </tr>
                 ))

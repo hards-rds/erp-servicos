@@ -1,6 +1,6 @@
 "use client";
 
-import { Banknote, X } from "lucide-react";
+import { Banknote, Trash2, X } from "lucide-react";
 import { useRef } from "react";
 import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 
@@ -8,26 +8,52 @@ type ReceiveEntryFormProps = {
   entryId: string;
   description: string;
   amount: number | string;
+  canReceive: boolean;
+  canDelete: boolean;
 };
 
 function formatMoney(value: number | string) {
   return Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-export function ReceiveEntryForm({ entryId, description, amount }: ReceiveEntryFormProps) {
+export function EntryActions({ entryId, description, amount, canReceive, canDelete }: ReceiveEntryFormProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const today = new Date().toISOString().slice(0, 10);
 
   return (
     <RowActionsMenu label={`Acoes da entrada ${description}`}>
-      <button
-        className="ghost-button compact-button button-with-icon"
-        type="button"
-        onClick={() => dialogRef.current?.showModal()}
+      {canReceive ? (
+        <button
+          className="ghost-button compact-button button-with-icon"
+          type="button"
+          onClick={() => dialogRef.current?.showModal()}
+        >
+          <Banknote aria-hidden="true" size={16} />
+          Dar baixa
+        </button>
+      ) : null}
+      <form
+        action="/api/financeiro/entradas"
+        method="post"
+        onSubmit={(event) => {
+          const confirmed = window.confirm(
+            `Excluir permanentemente a entrada "${description}" no valor de ${formatMoney(amount)}? Esta acao nao pode ser desfeita.`
+          );
+          if (!confirmed) event.preventDefault();
+        }}
       >
-        <Banknote aria-hidden="true" size={16} />
-        Dar baixa
-      </button>
+        <input type="hidden" name="action" value="delete" />
+        <input type="hidden" name="entryId" value={entryId} />
+        <button
+          className="danger-button compact-button button-with-icon"
+          type="submit"
+          disabled={!canDelete}
+          title={canDelete ? "Excluir entrada" : "Entradas recebidas ou conciliadas devem permanecer no historico"}
+        >
+          <Trash2 aria-hidden="true" size={16} />
+          Excluir
+        </button>
+      </form>
       <dialog className="action-dialog" ref={dialogRef} aria-labelledby={`receive-title-${entryId}`}>
         <div className="dialog-header">
           <div>
