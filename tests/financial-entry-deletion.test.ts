@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { getFinancialEntryDeletionBlocker } from "../src/domains/finance/entry-deletion.ts";
+import {
+  getFinancialEntryDeletionBlocker,
+  isProtectedNfseForEntryDeletion
+} from "../src/domains/finance/entry-deletion.ts";
 
 const availableEntry = {
   status: "previsto",
@@ -33,6 +36,16 @@ test("referencias antigas sem documento real nao bloqueiam a exclusao", () => {
   assert.equal(getFinancialEntryDeletionBlocker(availableEntry), null);
 });
 
+test("protege somente documentos fiscais com efeito legal ou ja enviados", () => {
+  for (const status of ["rascunho", "validada", "enfileirada", "rejeitada", "erro_integracao"]) {
+    assert.equal(isProtectedNfseForEntryDeletion(status, false), false);
+  }
+  for (const status of ["enviada", "autorizada", "cancelada"]) {
+    assert.equal(isProtectedNfseForEntryDeletion(status, false), true);
+  }
+  assert.equal(isProtectedNfseForEntryDeletion("rejeitada", true), true);
+});
+
 test("rota de exclusao exige permissao e limita a empresa ativa", () => {
   const route = readFileSync("src/app/api/financeiro/entradas/route.ts", "utf8");
   const actions = readFileSync("src/components/finance/receive-entry-form.tsx", "utf8");
@@ -42,6 +55,8 @@ test("rota de exclusao exige permissao e limita a empresa ativa", () => {
   assert.match(route, /\.eq\("company_id", profile\.company_id\)/);
   assert.match(route, /\.or\(nfseFilter\)/);
   assert.match(route, /delete_check_error/);
+  assert.match(route, /findAuthorizedNfseXml/);
+  assert.match(route, /linkedRemovableDocumentIds/);
   assert.match(actions, /window\.confirm/);
   assert.match(actions, /name="action" value="delete"/);
 });

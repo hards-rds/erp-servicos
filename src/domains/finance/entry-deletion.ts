@@ -9,6 +9,12 @@ export type FinancialEntryDeletionContext = {
 
 export type FinancialEntryDeletionBlocker = "settled" | "nfse" | "charge" | "reconciliation" | "sale" | null;
 
+const protectedNfseStatuses = new Set(["enviada", "autorizada", "cancelada"]);
+
+export function isProtectedNfseForEntryDeletion(status: string, hasAuthorizedXml: boolean) {
+  return hasAuthorizedXml || protectedNfseStatuses.has(status);
+}
+
 export function getFinancialEntryDeletionBlocker(
   context: FinancialEntryDeletionContext
 ): FinancialEntryDeletionBlocker {

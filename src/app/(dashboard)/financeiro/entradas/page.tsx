@@ -29,7 +29,7 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   delete_invalid: { kind: "error", text: "Nao foi possivel identificar a entrada para excluir." },
   delete_not_found: { kind: "error", text: "Entrada nao encontrada na empresa ativa ou ja excluida." },
   delete_settled: { kind: "error", text: "Entradas recebidas ou conciliadas devem permanecer no historico financeiro." },
-  delete_nfse: { kind: "error", text: "Existe um documento fiscal vinculado a esta entrada. Exclua o documento fiscal de teste ou preserve o historico da nota emitida." },
+  delete_nfse: { kind: "error", text: "Existe uma NFS-e enviada, autorizada ou cancelada vinculada a esta entrada. O lancamento deve permanecer no historico fiscal e financeiro." },
   delete_charge: { kind: "error", text: "Existe um boleto vinculado a esta entrada. Cancele ou remova a cobranca antes de excluir o lancamento." },
   delete_reconciliation: { kind: "error", text: "Esta entrada possui conciliacao bancaria e deve permanecer no historico financeiro." },
   delete_sale: { kind: "error", text: "Esta entrada foi gerada por uma venda. Cancele a venda na origem para ajustar o financeiro." },

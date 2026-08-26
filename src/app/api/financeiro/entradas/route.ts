@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getFinancialEntryDeletionBlocker } from "@/domains/finance/entry-deletion";
+import {
+  getFinancialEntryDeletionBlocker,
+  isProtectedNfseForEntryDeletion
+} from "@/domains/finance/entry-deletion";
+import { findAuthorizedNfseXml } from "@/lib/fiscal/nfse-xml";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 function readString(formData: FormData, key: string) {
@@ -66,7 +70,11 @@ export async function POST(request: NextRequest) {
     ].filter(Boolean).join(",");
 
     const [nfseResult, chargeResult, reconciliationResult, saleResult] = await Promise.all([
-      supabase.from("nfse_documents").select("id", { count: "exact", head: true }).eq("company_id", profile.company_id).or(nfseFilter),
+      supabase
+        .from("nfse_documents")
+        .select("id,status,response_payload,financial_entry_id")
+        .eq("company_id", profile.company_id)
+        .or(nfseFilter),
       supabase.from("boleto_charges").select("id", { count: "exact", head: true }).eq("company_id", profile.company_id).or(chargeFilter),
       supabase.from("bank_reconciliations").select("id", { count: "exact", head: true }).eq("financial_entry_id", entryId).eq("company_id", profile.company_id),
       supabase.from("sales").select("id", { count: "exact", head: true }).eq("financial_entry_id", entryId).eq("company_id", profile.company_id)
@@ -76,16 +84,42 @@ export async function POST(request: NextRequest) {
       return redirectWith(request, "delete_check_error");
     }
 
+    const nfseDocuments = nfseResult.data || [];
+    const protectedNfseDocuments = nfseDocuments.filter((document) => {
+      const linkedToAnotherEntry = Boolean(
+        document.financial_entry_id && document.financial_entry_id !== entry.id
+      );
+      return linkedToAnotherEntry || isProtectedNfseForEntryDeletion(
+        String(document.status),
+        Boolean(findAuthorizedNfseXml(document.response_payload))
+      );
+    });
+    const removableNfseDocuments = nfseDocuments.filter((document) =>
+      !protectedNfseDocuments.some((protectedDocument) => protectedDocument.id === document.id)
+    );
+
     const blocker = getFinancialEntryDeletionBlocker({
       status: String(entry.status),
       receivedAt: entry.received_at as string | null,
-      nfseCount: nfseResult.count || 0,
+      nfseCount: protectedNfseDocuments.length,
       chargeCount: chargeResult.count || 0,
       reconciliationCount: reconciliationResult.count || 0,
       saleCount: saleResult.count || 0
     });
     if (blocker === "settled") return redirectWith(request, "delete_settled");
     if (blocker) return redirectWith(request, `delete_${blocker}`);
+
+    const linkedRemovableDocumentIds = removableNfseDocuments
+      .filter((document) => document.financial_entry_id === entry.id)
+      .map((document) => document.id);
+    if (linkedRemovableDocumentIds.length) {
+      const { error: detachError } = await supabase
+        .from("nfse_documents")
+        .update({ financial_entry_id: null, updated_at: new Date().toISOString() })
+        .eq("company_id", profile.company_id)
+        .in("id", linkedRemovableDocumentIds);
+      if (detachError) return redirectWith(request, "delete_error");
+    }
 
     const { data: deletedEntries, error } = await supabase
       .from("financial_entries")
@@ -94,9 +128,27 @@ export async function POST(request: NextRequest) {
       .eq("company_id", profile.company_id)
       .select("id");
 
-    if (error?.code === "23503") return redirectWith(request, "delete_linked");
-    if (error) return redirectWith(request, "delete_error");
+    if (error) {
+      if (linkedRemovableDocumentIds.length) {
+        await supabase
+          .from("nfse_documents")
+          .update({ financial_entry_id: entry.id, updated_at: new Date().toISOString() })
+          .eq("company_id", profile.company_id)
+          .in("id", linkedRemovableDocumentIds);
+      }
+      if (error.code === "23503") return redirectWith(request, "delete_linked");
+      return redirectWith(request, "delete_error");
+    }
     if (!deletedEntries?.length) return redirectWith(request, "delete_not_found");
+
+    const removableDocumentIds = removableNfseDocuments.map((document) => document.id);
+    if (removableDocumentIds.length) {
+      await supabase
+        .from("nfse_documents")
+        .delete()
+        .eq("company_id", profile.company_id)
+        .in("id", removableDocumentIds);
+    }
     return redirectWith(request, "deleted");
   }
 
