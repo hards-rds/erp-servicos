@@ -10,9 +10,16 @@ export type FinancialEntryDeletionContext = {
 export type FinancialEntryDeletionBlocker = "settled" | "nfse" | "charge" | "reconciliation" | "sale" | null;
 
 const protectedNfseStatuses = new Set(["enviada", "autorizada", "cancelada"]);
+const settledChargeStatuses = new Set(["paga", "conciliada"]);
 
 export function isProtectedNfseForEntryDeletion(status: string, hasAuthorizedXml: boolean) {
   return hasAuthorizedXml || protectedNfseStatuses.has(status);
+}
+
+export function isProtectedInterChargeForEntryDeletion(status: string, hasExternalId: boolean) {
+  if (settledChargeStatuses.has(status)) return true;
+  if (status === "cancelada") return false;
+  return hasExternalId;
 }
 
 export function getFinancialEntryDeletionBlocker(

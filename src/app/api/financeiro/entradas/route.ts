@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getFinancialEntryDeletionBlocker,
+  isProtectedInterChargeForEntryDeletion,
   isProtectedNfseForEntryDeletion
 } from "@/domains/finance/entry-deletion";
 import { findAuthorizedNfseXml } from "@/lib/fiscal/nfse-xml";
@@ -75,7 +76,11 @@ export async function POST(request: NextRequest) {
         .select("id,status,response_payload,financial_entry_id")
         .eq("company_id", profile.company_id)
         .or(nfseFilter),
-      supabase.from("boleto_charges").select("id", { count: "exact", head: true }).eq("company_id", profile.company_id).or(chargeFilter),
+      supabase
+        .from("boleto_charges")
+        .select("id,status,external_id,financial_entry_id")
+        .eq("company_id", profile.company_id)
+        .or(chargeFilter),
       supabase.from("bank_reconciliations").select("id", { count: "exact", head: true }).eq("financial_entry_id", entryId).eq("company_id", profile.company_id),
       supabase.from("sales").select("id", { count: "exact", head: true }).eq("financial_entry_id", entryId).eq("company_id", profile.company_id)
     ]);
@@ -97,12 +102,25 @@ export async function POST(request: NextRequest) {
     const removableNfseDocuments = nfseDocuments.filter((document) =>
       !protectedNfseDocuments.some((protectedDocument) => protectedDocument.id === document.id)
     );
+    const charges = chargeResult.data || [];
+    const protectedCharges = charges.filter((charge) => {
+      const linkedToAnotherEntry = Boolean(
+        charge.financial_entry_id && charge.financial_entry_id !== entry.id
+      );
+      return linkedToAnotherEntry || isProtectedInterChargeForEntryDeletion(
+        String(charge.status),
+        Boolean(charge.external_id)
+      );
+    });
+    const removableCharges = charges.filter((charge) =>
+      !protectedCharges.some((protectedCharge) => protectedCharge.id === charge.id)
+    );
 
     const blocker = getFinancialEntryDeletionBlocker({
       status: String(entry.status),
       receivedAt: entry.received_at as string | null,
       nfseCount: protectedNfseDocuments.length,
-      chargeCount: chargeResult.count || 0,
+      chargeCount: protectedCharges.length,
       reconciliationCount: reconciliationResult.count || 0,
       saleCount: saleResult.count || 0
     });
@@ -119,6 +137,25 @@ export async function POST(request: NextRequest) {
         .eq("company_id", profile.company_id)
         .in("id", linkedRemovableDocumentIds);
       if (detachError) return redirectWith(request, "delete_error");
+    }
+
+    const removableChargeIds = removableCharges.map((charge) => charge.id);
+    if (removableChargeIds.length) {
+      const { error: chargeDeleteError } = await supabase
+        .from("boleto_charges")
+        .delete()
+        .eq("company_id", profile.company_id)
+        .in("id", removableChargeIds);
+      if (chargeDeleteError) {
+        if (linkedRemovableDocumentIds.length) {
+          await supabase
+            .from("nfse_documents")
+            .update({ financial_entry_id: entry.id, updated_at: new Date().toISOString() })
+            .eq("company_id", profile.company_id)
+            .in("id", linkedRemovableDocumentIds);
+        }
+        return redirectWith(request, "delete_error");
+      }
     }
 
     const { data: deletedEntries, error } = await supabase

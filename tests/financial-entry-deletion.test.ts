@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   getFinancialEntryDeletionBlocker,
+  isProtectedInterChargeForEntryDeletion,
   isProtectedNfseForEntryDeletion
 } from "../src/domains/finance/entry-deletion.ts";
 
@@ -46,6 +47,16 @@ test("protege somente documentos fiscais com efeito legal ou ja enviados", () =>
   assert.equal(isProtectedNfseForEntryDeletion("rejeitada", true), true);
 });
 
+test("remove referencias locais ou canceladas do Inter e preserva cobrancas reais", () => {
+  assert.equal(isProtectedInterChargeForEntryDeletion("rascunho", false), false);
+  assert.equal(isProtectedInterChargeForEntryDeletion("erro_integracao", false), false);
+  assert.equal(isProtectedInterChargeForEntryDeletion("cancelada", true), false);
+  assert.equal(isProtectedInterChargeForEntryDeletion("registrada", true), true);
+  assert.equal(isProtectedInterChargeForEntryDeletion("erro_integracao", true), true);
+  assert.equal(isProtectedInterChargeForEntryDeletion("paga", false), true);
+  assert.equal(isProtectedInterChargeForEntryDeletion("conciliada", false), true);
+});
+
 test("rota de exclusao exige permissao e limita a empresa ativa", () => {
   const route = readFileSync("src/app/api/financeiro/entradas/route.ts", "utf8");
   const actions = readFileSync("src/components/finance/receive-entry-form.tsx", "utf8");
@@ -56,7 +67,9 @@ test("rota de exclusao exige permissao e limita a empresa ativa", () => {
   assert.match(route, /\.or\(nfseFilter\)/);
   assert.match(route, /delete_check_error/);
   assert.match(route, /findAuthorizedNfseXml/);
+  assert.match(route, /isProtectedInterChargeForEntryDeletion/);
   assert.match(route, /linkedRemovableDocumentIds/);
+  assert.match(route, /removableChargeIds/);
   assert.match(actions, /window\.confirm/);
   assert.match(actions, /name="action" value="delete"/);
 });
