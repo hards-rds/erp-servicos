@@ -7,6 +7,7 @@ export function CreatePayableForm() {
   const today = new Date().toISOString().slice(0, 10);
   return (
     <form className="form-stack" action="/api/financeiro/saidas" method="post">
+      <input type="hidden" name="action" value="create" />
       <label>Fornecedor<input name="vendorName" placeholder="Nome do fornecedor" required /></label>
       <div className="form-grid">
         <label>

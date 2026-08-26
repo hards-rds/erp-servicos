@@ -1,5 +1,7 @@
 import { PageHeader } from "@/components/layout/page-header";
+import { PayableActions } from "@/components/finance/payable-actions";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { canEditPayable, canMarkPayablePaid } from "@/domains/finance/payables";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type PayableRow = {
@@ -23,7 +25,15 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   created: { kind: "success", text: "Conta a pagar cadastrada com sucesso." },
   invalid: { kind: "error", text: "Revise os dados da conta, o valor e as datas informadas." },
   error: { kind: "error", text: "Nao foi possivel cadastrar a conta a pagar agora." },
-  profile_error: { kind: "error", text: "Seu usuario ainda nao esta vinculado a uma empresa." }
+  profile_error: { kind: "error", text: "Seu usuario ainda nao esta vinculado a uma empresa." },
+  updated: { kind: "success", text: "Conta a pagar atualizada com sucesso." },
+  paid: { kind: "success", text: "Pagamento registrado e saida marcada como paga." },
+  not_found: { kind: "error", text: "Conta a pagar nao encontrada na empresa ativa." },
+  settled: { kind: "error", text: "Contas pagas ou conciliadas nao podem ser alteradas." },
+  linked: { kind: "error", text: "Esta conta e controlada por uma comissao ou conciliacao e deve ser alterada no modulo de origem." },
+  forbidden: { kind: "error", text: "Seu usuario nao possui permissao para esta operacao." },
+  update_error: { kind: "error", text: "Nao foi possivel atualizar a conta a pagar agora." },
+  payment_error: { kind: "error", text: "Nao foi possivel registrar o pagamento agora." }
 };
 
 function formatMoney(value: number | string) {
@@ -32,6 +42,20 @@ function formatMoney(value: number | string) {
 
 function formatDate(value: string) {
   return new Date(`${value}T00:00:00`).toLocaleDateString("pt-BR");
+}
+
+function formatPaymentMethod(value: string | null) {
+  if (!value) return "-";
+  const labels: Record<string, string> = {
+    pix: "Pix",
+    cartao_credito: "Cartao de credito",
+    cartao_debito: "Cartao de debito",
+    dinheiro: "Dinheiro",
+    boleto: "Boleto",
+    transferencia: "Transferencia",
+    outro: "Outro"
+  };
+  return labels[value] || value;
 }
 
 function getTone(status: string) {
@@ -51,15 +75,34 @@ export default async function SaidasPage({ searchParams }: SaidasPageProps) {
     : { data: null };
 
   let payables: PayableRow[] = [];
+  const protectedPayableIds = new Set<string>();
+  let canEdit = false;
+  let canPay = false;
   if (profile?.company_id) {
-    const { data } = await supabase
-      .from("payables")
-      .select("id,vendor_name,category,description,competence,due_date,paid_at,amount,payment_method,status")
-      .eq("company_id", profile.company_id)
-      .order("due_date", { ascending: false })
-      .order("created_at", { ascending: false })
-      .limit(100);
+    const [{ data }, { data: editPermission }, { data: payPermission }] = await Promise.all([
+      supabase
+        .from("payables")
+        .select("id,vendor_name,category,description,competence,due_date,paid_at,amount,payment_method,status")
+        .eq("company_id", profile.company_id)
+        .order("due_date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(100),
+      supabase.rpc("app_has_permission", { permission_module: "financeiro.saidas", permission_action: "editar" }),
+      supabase.rpc("app_has_permission", { permission_module: "financeiro.saidas", permission_action: "aprovar" })
+    ]);
     payables = (data || []) as PayableRow[];
+    canEdit = Boolean(editPermission);
+    canPay = Boolean(payPermission);
+    const payableIds = payables.map((payable) => payable.id);
+    if (payableIds.length) {
+      const [{ data: commissions }, { data: reconciliations }] = await Promise.all([
+        supabase.from("commissions").select("payable_id").eq("company_id", profile.company_id).in("payable_id", payableIds),
+        supabase.from("bank_reconciliations").select("payable_id").eq("company_id", profile.company_id).in("payable_id", payableIds)
+      ]);
+      for (const item of [...(commissions || []), ...(reconciliations || [])]) {
+        if (item.payable_id) protectedPayableIds.add(item.payable_id);
+      }
+    }
   }
 
   const message = params?.status
@@ -90,6 +133,7 @@ export default async function SaidasPage({ searchParams }: SaidasPageProps) {
                 <th>Valor</th>
                 <th>Pagamento</th>
                 <th>Status</th>
+                <th>Acoes</th>
               </tr>
             </thead>
             <tbody>
@@ -107,15 +151,24 @@ export default async function SaidasPage({ searchParams }: SaidasPageProps) {
                     {payable.paid_at ? (
                       <>
                         <strong>{formatDate(payable.paid_at)}</strong>
-                        <div className="muted">{payable.payment_method || "-"}</div>
+                        <div className="muted">{formatPaymentMethod(payable.payment_method)}</div>
                       </>
                     ) : "-"}
                   </td>
                   <td><StatusBadge tone={getTone(payable.status)}>{payable.status}</StatusBadge></td>
+                  <td>
+                    <PayableActions
+                      payableId={payable.id}
+                      description={payable.description}
+                      amount={payable.amount}
+                      canEdit={canEdit && !protectedPayableIds.has(payable.id) && canEditPayable(payable.status)}
+                      canPay={canPay && !protectedPayableIds.has(payable.id) && canMarkPayablePaid(payable.status)}
+                    />
+                  </td>
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={7}>Nenhuma saida cadastrada.</td>
+                  <td colSpan={8}>Nenhuma saida cadastrada.</td>
                 </tr>
               )}
             </tbody>
