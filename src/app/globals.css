@@ -161,6 +161,8 @@ textarea {
 
 .form-stack {
   display: grid;
+  align-content: start;
+  grid-auto-rows: max-content;
   gap: 16px;
 }
 
@@ -207,11 +209,17 @@ input,
 select,
 textarea {
   width: 100%;
+  min-width: 0;
   color: var(--text);
   background: var(--input);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 11px 12px;
+}
+
+input,
+select {
+  min-height: 42px;
 }
 
 textarea {
@@ -223,10 +231,21 @@ textarea {
 .ghost-button,
 .danger-button,
 .icon-button {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  max-width: 100%;
+  padding: 0 14px;
   border: 1px solid transparent;
   border-radius: var(--radius);
   color: var(--text);
   min-height: 40px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: middle;
   cursor: pointer;
   transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
 }
@@ -242,10 +261,7 @@ textarea {
 }
 
 .button-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 14px;
+  text-decoration: none;
 }
 
 .ghost-button {
@@ -277,15 +293,12 @@ textarea {
 }
 
 .button-with-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
+  flex-direction: row;
 }
 
 .action-dialog {
   width: min(520px, calc(100vw - 32px));
-  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
   overflow: auto;
   color: var(--text);
   background: var(--panel);
@@ -305,7 +318,7 @@ textarea {
 .dialog-header,
 .dialog-actions {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
 }
@@ -320,12 +333,26 @@ textarea {
 }
 
 .dialog-actions {
+  align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
+  margin-top: 2px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
 }
 
-.dialog-actions button {
+.dialog-actions > button,
+.dialog-actions > .button-link {
+  min-width: 120px;
   min-height: 40px;
-  padding: 0 14px;
+}
+
+.action-dialog form.form-stack {
+  gap: 18px;
+}
+
+.action-dialog form.form-stack > * {
+  min-width: 0;
 }
 
 .table-actions {
@@ -486,9 +513,10 @@ textarea {
 }
 
 .icon-button {
+  flex: 0 0 40px;
   width: 40px;
-  display: inline-grid;
-  place-items: center;
+  height: 40px;
+  padding: 0;
   background: var(--button-secondary);
   border-color: var(--line);
 }
@@ -830,6 +858,7 @@ summary:focus-visible {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -980,6 +1009,7 @@ tbody tr:last-child td {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 10px;
   padding-top: 4px;
 }
@@ -1435,6 +1465,28 @@ tbody tr:last-child td {
 }
 
 @media (max-width: 620px) {
+  .action-dialog {
+    width: calc(100vw - 20px);
+    max-height: calc(100dvh - 20px);
+    padding: 16px;
+  }
+
+  .dialog-header {
+    margin-bottom: 16px;
+  }
+
+  .dialog-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .dialog-actions > button,
+  .dialog-actions > .button-link {
+    width: 100%;
+    min-width: 0;
+    white-space: normal;
+  }
+
   .metrics,
   .grid {
     grid-template-columns: 1fr;
@@ -1490,6 +1542,12 @@ tbody tr:last-child td {
     width: 100%;
   }
 
+  .page-actions .primary-button,
+  .page-actions .ghost-button,
+  .page-actions .danger-button {
+    white-space: normal;
+  }
+
   .page-actions .page-actions {
     display: grid;
     grid-template-columns: 1fr;
@@ -1506,6 +1564,7 @@ tbody tr:last-child td {
 
   .page-form-actions > * {
     width: 100%;
+    white-space: normal;
   }
 
   .table-panel,
