@@ -24,12 +24,14 @@ import {
   LogOut,
   Mail,
   Menu,
+  Moon,
   Package,
   Plug,
   ReceiptText,
   Settings,
   ShieldCheck,
   ShoppingCart,
+  Sun,
   NotebookTabs,
   Trophy,
   UserRoundCog,
@@ -39,6 +41,8 @@ import {
 } from "lucide-react";
 
 const SIDEBAR_STORAGE_KEY = "erp-servicos:sidebar-collapsed";
+const THEME_STORAGE_KEY = "erp-servicos:theme";
+type Theme = "dark" | "light";
 
 const nav = [
   {
@@ -133,6 +137,7 @@ export function AppShellClient({
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [theme, setTheme] = useState<Theme>("dark");
   const segmentNav = nav
     .map((group) => ({
       ...group,
@@ -155,6 +160,7 @@ export function AppShellClient({
 
   useEffect(() => {
     setCollapsed(window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true");
+    setTheme(document.documentElement.dataset.theme === "light" ? "light" : "dark");
   }, []);
 
   useEffect(() => {
@@ -181,6 +187,15 @@ export function AppShellClient({
     setCollapsed((current) => {
       const next = !current;
       window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next));
+      return next;
+    });
+  };
+
+  const toggleTheme = () => {
+    setTheme((current) => {
+      const next = current === "dark" ? "light" : "dark";
+      document.documentElement.dataset.theme = next;
+      window.localStorage.setItem(THEME_STORAGE_KEY, next);
       return next;
     });
   };
@@ -285,6 +300,15 @@ export function AppShellClient({
                 <small>{displayEmail} · {displayRole}</small>
               </span>
             </div>
+            <button
+              className="icon-button theme-toggle"
+              type="button"
+              title={theme === "dark" ? "Usar tema claro" : "Usar tema escuro"}
+              aria-label={theme === "dark" ? "Usar tema claro" : "Usar tema escuro"}
+              onClick={toggleTheme}
+            >
+              {theme === "dark" ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
+            </button>
             <form action="/api/auth/logout" method="post">
               <button className="icon-button" type="submit" title="Sair" aria-label="Sair">
                 <LogOut />

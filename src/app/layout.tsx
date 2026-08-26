@@ -1,6 +1,17 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
+const themeBootstrap = `
+  (function () {
+    try {
+      var savedTheme = window.localStorage.getItem("erp-servicos:theme");
+      document.documentElement.dataset.theme = savedTheme === "light" ? "light" : "dark";
+    } catch (_) {
+      document.documentElement.dataset.theme = "dark";
+    }
+  })();
+`;
+
 export const metadata: Metadata = {
   title: "ERP Servicos",
   description: "ERP web para empresas de servicos recorrentes",
@@ -12,7 +23,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" suppressHydrationWarning>
+      <head><script dangerouslySetInnerHTML={{ __html: themeBootstrap }} /></head>
       <body>{children}</body>
     </html>
   );
