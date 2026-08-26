@@ -47,33 +47,45 @@ export async function POST(request: NextRequest) {
     });
     if (!canDelete) return redirectWith(request, "delete_forbidden");
 
-    const [{ data: entry }, nfseResult, chargeResult, reconciliationResult, saleResult] = await Promise.all([
-      supabase
-        .from("financial_entries")
-        .select("id,status,received_at,nfse_document_id,charge_id")
-        .eq("id", entryId)
-        .eq("company_id", profile.company_id)
-        .maybeSingle(),
-      supabase.from("nfse_documents").select("id", { count: "exact", head: true }).eq("financial_entry_id", entryId).eq("company_id", profile.company_id),
-      supabase.from("boleto_charges").select("id", { count: "exact", head: true }).eq("financial_entry_id", entryId).eq("company_id", profile.company_id),
+    const { data: entry } = await supabase
+      .from("financial_entries")
+      .select("id,status,received_at,nfse_document_id,charge_id")
+      .eq("id", entryId)
+      .eq("company_id", profile.company_id)
+      .maybeSingle();
+
+    if (!entry) return redirectWith(request, "delete_not_found");
+
+    const nfseFilter = [
+      `financial_entry_id.eq.${entryId}`,
+      entry.nfse_document_id ? `id.eq.${entry.nfse_document_id}` : null
+    ].filter(Boolean).join(",");
+    const chargeFilter = [
+      `financial_entry_id.eq.${entryId}`,
+      entry.charge_id ? `id.eq.${entry.charge_id}` : null
+    ].filter(Boolean).join(",");
+
+    const [nfseResult, chargeResult, reconciliationResult, saleResult] = await Promise.all([
+      supabase.from("nfse_documents").select("id", { count: "exact", head: true }).eq("company_id", profile.company_id).or(nfseFilter),
+      supabase.from("boleto_charges").select("id", { count: "exact", head: true }).eq("company_id", profile.company_id).or(chargeFilter),
       supabase.from("bank_reconciliations").select("id", { count: "exact", head: true }).eq("financial_entry_id", entryId).eq("company_id", profile.company_id),
       supabase.from("sales").select("id", { count: "exact", head: true }).eq("financial_entry_id", entryId).eq("company_id", profile.company_id)
     ]);
 
-    if (!entry) return redirectWith(request, "delete_not_found");
+    if (nfseResult.error || chargeResult.error || reconciliationResult.error || saleResult.error) {
+      return redirectWith(request, "delete_check_error");
+    }
 
     const blocker = getFinancialEntryDeletionBlocker({
       status: String(entry.status),
       receivedAt: entry.received_at as string | null,
-      nfseDocumentId: entry.nfse_document_id as string | null,
-      chargeId: entry.charge_id as string | null,
       nfseCount: nfseResult.count || 0,
       chargeCount: chargeResult.count || 0,
       reconciliationCount: reconciliationResult.count || 0,
       saleCount: saleResult.count || 0
     });
     if (blocker === "settled") return redirectWith(request, "delete_settled");
-    if (blocker === "linked") return redirectWith(request, "delete_linked");
+    if (blocker) return redirectWith(request, `delete_${blocker}`);
 
     const { data: deletedEntries, error } = await supabase
       .from("financial_entries")

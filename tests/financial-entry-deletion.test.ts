@@ -6,8 +6,6 @@ import { getFinancialEntryDeletionBlocker } from "../src/domains/finance/entry-d
 const availableEntry = {
   status: "previsto",
   receivedAt: null,
-  nfseDocumentId: null,
-  chargeId: null,
   nfseCount: 0,
   chargeCount: 0,
   reconciliationCount: 0,
@@ -25,10 +23,14 @@ test("preserva entradas recebidas ou conciliadas", () => {
 });
 
 test("preserva entradas vinculadas a documentos ou operacoes", () => {
-  assert.equal(getFinancialEntryDeletionBlocker({ ...availableEntry, nfseCount: 1 }), "linked");
-  assert.equal(getFinancialEntryDeletionBlocker({ ...availableEntry, chargeCount: 1 }), "linked");
-  assert.equal(getFinancialEntryDeletionBlocker({ ...availableEntry, reconciliationCount: 1 }), "linked");
-  assert.equal(getFinancialEntryDeletionBlocker({ ...availableEntry, saleCount: 1 }), "linked");
+  assert.equal(getFinancialEntryDeletionBlocker({ ...availableEntry, nfseCount: 1 }), "nfse");
+  assert.equal(getFinancialEntryDeletionBlocker({ ...availableEntry, chargeCount: 1 }), "charge");
+  assert.equal(getFinancialEntryDeletionBlocker({ ...availableEntry, reconciliationCount: 1 }), "reconciliation");
+  assert.equal(getFinancialEntryDeletionBlocker({ ...availableEntry, saleCount: 1 }), "sale");
+});
+
+test("referencias antigas sem documento real nao bloqueiam a exclusao", () => {
+  assert.equal(getFinancialEntryDeletionBlocker(availableEntry), null);
 });
 
 test("rota de exclusao exige permissao e limita a empresa ativa", () => {
@@ -38,6 +40,8 @@ test("rota de exclusao exige permissao e limita a empresa ativa", () => {
   assert.match(route, /permission_module: "financeiro\.entradas"/);
   assert.match(route, /permission_action: "excluir"/);
   assert.match(route, /\.eq\("company_id", profile\.company_id\)/);
+  assert.match(route, /\.or\(nfseFilter\)/);
+  assert.match(route, /delete_check_error/);
   assert.match(actions, /window\.confirm/);
   assert.match(actions, /name="action" value="delete"/);
 });
