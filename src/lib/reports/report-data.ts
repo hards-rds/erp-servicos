@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
 import { fetchAllReportRows } from "@/lib/reports/fetch-all";
 import type { ReportFilters, ReportResult } from "@/lib/reports/types";
 
@@ -77,18 +77,18 @@ function dateInRange(value: string | null | undefined, filters: ReportFilters) {
 }
 
 async function getReportContext() {
-  const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const authClient = await createServerSupabaseClient();
+  const { data: { user } } = await authClient.auth.getUser();
   if (!user) throw new Error("Usuario nao autenticado.");
 
-  const { data: profile, error } = await supabase
+  const { data: profile, error } = await authClient
     .from("profiles")
     .select("company_id")
     .eq("id", user.id)
     .maybeSingle();
   if (error || !profile?.company_id) throw error || new Error("Empresa ativa nao encontrada.");
 
-  return { supabase, companyId: profile.company_id as string };
+  return { supabase: createServiceClient(), companyId: profile.company_id as string };
 }
 
 async function financialReport(filters: ReportFilters): Promise<ReportResult> {
