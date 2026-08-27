@@ -1561,6 +1561,10 @@ tbody tr:last-child td {
     width: 100%;
   }
 
+  .list-search.single-action button {
+    grid-column: 1 / -1;
+  }
+
   .pagination-actions {
     display: grid;
     grid-template-columns: 1fr auto 1fr;

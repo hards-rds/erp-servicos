@@ -113,7 +113,7 @@ export default async function ClientesPage({ searchParams }: ClientesPageProps) 
             <h2>Clientes cadastrados</h2>
             <span className="list-count">{new Intl.NumberFormat("pt-BR").format(total)} {total === 1 ? "cliente" : "clientes"}</span>
           </div>
-          <form className="list-search" action="/cadastros/clientes" method="get">
+          <form className={`list-search${search ? "" : " single-action"}`} action="/cadastros/clientes" method="get">
             <label className="sr-only" htmlFor="client-search">Buscar cliente</label>
             <input id="client-search" name="q" type="search" defaultValue={search} placeholder="Buscar por nome, CPF ou CNPJ" />
             <button className="ghost-button" type="submit">Buscar</button>
