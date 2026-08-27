@@ -1342,7 +1342,8 @@ tbody tr:last-child td {
   .page-actions,
   .report-tabs,
   .report-filters,
-  .report-print-button {
+  .report-print-button,
+  .report-pagination {
     display: none !important;
   }
 

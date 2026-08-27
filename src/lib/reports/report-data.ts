@@ -1,7 +1,23 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { fetchAllReportRows } from "@/lib/reports/fetch-all";
 import type { ReportFilters, ReportResult } from "@/lib/reports/types";
 
 type RelatedClient = { legal_name: string } | Array<{ legal_name: string }> | null;
+type EyeData = {
+  sphere?: string | null;
+  cylinder?: string | null;
+  axis?: string | null;
+  addition?: string | null;
+  pd?: string | null;
+};
+type ClinicalData = {
+  addition?: string | null;
+  baseCurve?: string | null;
+  complaint?: string | null;
+  lensType?: string | null;
+  binocularPd?: string | null;
+  frameNotes?: string | null;
+};
 
 function formatMoney(value: number | string | null | undefined) {
   return Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -23,6 +39,30 @@ function labelStatus(value: string) {
 function clientName(value: RelatedClient) {
   const client = Array.isArray(value) ? value[0] : value;
   return client?.legal_name || "-";
+}
+
+function formatEye(eye: EyeData | null) {
+  if (!eye) return "-";
+  const values = [
+    eye.sphere ? `Esf. ${eye.sphere}` : "",
+    eye.cylinder ? `Cil. ${eye.cylinder}` : "",
+    eye.axis ? `Eixo ${eye.axis}` : "",
+    eye.addition ? `Ad. ${eye.addition}` : "",
+    eye.pd ? `DNP ${eye.pd}` : ""
+  ].filter(Boolean);
+  return values.length ? values.join(" · ") : "-";
+}
+
+function formatClinical(clinical: ClinicalData | null, notes: string | null) {
+  const values = [
+    clinical?.complaint || "",
+    clinical?.lensType ? `Lente: ${clinical.lensType}` : "",
+    clinical?.binocularPd ? `DP: ${clinical.binocularPd}` : "",
+    clinical?.baseCurve ? `Curva base: ${clinical.baseCurve}` : "",
+    clinical?.frameNotes ? `Armacao: ${clinical.frameNotes}` : "",
+    notes || ""
+  ].filter(Boolean);
+  return values.length ? values.join(" · ") : "-";
 }
 
 function searchRows<T>(rows: T[], search: string, values: (row: T) => Array<unknown>) {
@@ -67,18 +107,19 @@ async function financialReport(filters: ReportFilters): Promise<ReportResult> {
   };
 
   const { supabase, companyId } = await getReportContext();
-  let query = supabase
-    .from("financial_entries")
-    .select("id,description,type,competence,due_date,received_at,received_amount,net_amount,payment_method,status,clients(legal_name)")
-    .eq("company_id", companyId)
-    .gte("due_date", filters.from)
-    .lte("due_date", filters.to)
-    .order("due_date", { ascending: false })
-    .limit(2000);
-  if (filters.status) query = query.eq("status", filters.status);
-  const { data, error } = await query;
-  if (error) throw error;
-  const rows = searchRows((data || []) as Row[], filters.search, (row) => [row.description, row.type, row.competence, row.status, clientName(row.clients)]);
+  const data = await fetchAllReportRows<Row>((from, to) => {
+    let query = supabase
+      .from("financial_entries")
+      .select("id,description,type,competence,due_date,received_at,received_amount,net_amount,payment_method,status,clients(legal_name)")
+      .eq("company_id", companyId)
+      .gte("due_date", filters.from)
+      .lte("due_date", filters.to)
+      .order("due_date", { ascending: false })
+      .order("id");
+    if (filters.status) query = query.eq("status", filters.status);
+    return query.range(from, to) as unknown as PromiseLike<{ data: Row[] | null; error: unknown }>;
+  });
+  const rows = searchRows(data, filters.search, (row) => [row.description, row.type, row.competence, row.status, clientName(row.clients)]);
   const active = rows.filter((row) => row.status !== "cancelado");
   const received = rows.filter((row) => ["recebido", "conciliado"].includes(row.status));
   const open = rows.filter((row) => !["recebido", "conciliado", "cancelado"].includes(row.status));
@@ -134,18 +175,19 @@ async function salesReport(filters: ReportFilters): Promise<ReportResult> {
   };
 
   const { supabase, companyId } = await getReportContext();
-  let query = supabase
-    .from("sales")
-    .select("id,sale_date,description,gross_amount,discount_amount,net_amount,payment_method,status,clients(legal_name)")
-    .eq("company_id", companyId)
-    .gte("sale_date", filters.from)
-    .lte("sale_date", filters.to)
-    .order("sale_date", { ascending: false })
-    .limit(2000);
-  if (filters.status) query = query.eq("status", filters.status);
-  const { data, error } = await query;
-  if (error) throw error;
-  const rows = searchRows((data || []) as Row[], filters.search, (row) => [row.description, row.status, row.payment_method, clientName(row.clients)]);
+  const data = await fetchAllReportRows<Row>((from, to) => {
+    let query = supabase
+      .from("sales")
+      .select("id,sale_date,description,gross_amount,discount_amount,net_amount,payment_method,status,clients(legal_name)")
+      .eq("company_id", companyId)
+      .gte("sale_date", filters.from)
+      .lte("sale_date", filters.to)
+      .order("sale_date", { ascending: false })
+      .order("id");
+    if (filters.status) query = query.eq("status", filters.status);
+    return query.range(from, to) as unknown as PromiseLike<{ data: Row[] | null; error: unknown }>;
+  });
+  const rows = searchRows(data, filters.search, (row) => [row.description, row.status, row.payment_method, clientName(row.clients)]);
   const valid = rows.filter((row) => row.status !== "cancelada");
   const received = valid.filter((row) => row.status === "recebida");
   const total = valid.reduce((sum, row) => sum + Number(row.net_amount), 0);
@@ -198,65 +240,81 @@ async function payablesReport(filters: ReportFilters): Promise<ReportResult> {
     status: string;
     created_at: string;
   };
+  type CommissionRow = {
+    id: string;
+    description: string;
+    reference_date: string;
+    due_date: string;
+    commission_amount: number | string;
+    status: string;
+    payable_id: string | null;
+    created_at: string;
+    seller: { name: string; email: string | null } | Array<{ name: string; email: string | null }> | null;
+  };
+  type BankRow = {
+    id: string;
+    transaction_date: string;
+    description: string | null;
+    amount: number | string;
+    created_at: string;
+    bank_accounts: { bank_name: string } | Array<{ bank_name: string }> | null;
+  };
+  type ReconciliationRow = { bank_transaction_id: string; payable_id: string | null };
 
   const { supabase, companyId } = await getReportContext();
-  let payablesQuery = supabase
-    .from("payables")
-    .select("id,vendor_name,category,description,competence,due_date,paid_at,amount,payment_method,status,created_at")
-    .eq("company_id", companyId)
-    .order("created_at", { ascending: false })
-    .limit(5000);
-  if (filters.status) payablesQuery = payablesQuery.eq("status", filters.status);
-
-  const commissionsQuery = !filters.status || filters.status === "previsto"
-    ? supabase
-        .from("commissions")
-        .select("id,description,reference_date,due_date,commission_amount,status,payable_id,created_at,seller:commission_sellers!commissions_commission_seller_id_fkey(name,email)")
+  const includeCommissions = !filters.status || filters.status === "previsto";
+  const includeBankTransactions = !filters.status || ["pago", "conciliado"].includes(filters.status);
+  const [payablesData, commissionsData, bankTransactionsData, reconciliationsData] = await Promise.all([
+    fetchAllReportRows<Omit<Row, "origin">>((from, to) => {
+      let query = supabase
+        .from("payables")
+        .select("id,vendor_name,category,description,competence,due_date,paid_at,amount,payment_method,status,created_at")
         .eq("company_id", companyId)
-        .eq("status", "pendente")
-        .is("payable_id", null)
         .order("created_at", { ascending: false })
-        .limit(5000)
-    : null;
-
-  const bankTransactionsQuery = !filters.status || ["pago", "conciliado"].includes(filters.status)
-    ? supabase
-        .from("bank_transactions")
-        .select("id,transaction_date,description,amount,created_at,bank_accounts(bank_name)")
-        .eq("company_id", companyId)
-        .lt("amount", 0)
-        .gte("transaction_date", filters.from)
-        .lte("transaction_date", filters.to)
-        .order("transaction_date", { ascending: false })
-        .limit(5000)
-    : null;
-
-  const reconciliationsQuery = bankTransactionsQuery
-    ? supabase
-        .from("bank_reconciliations")
-        .select("bank_transaction_id,payable_id")
-        .eq("company_id", companyId)
-        .limit(5000)
-    : null;
-
-  const [payablesResult, commissionsResult, bankTransactionsResult, reconciliationsResult] = await Promise.all([
-    payablesQuery,
-    commissionsQuery ?? Promise.resolve({ data: [], error: null }),
-    bankTransactionsQuery ?? Promise.resolve({ data: [], error: null }),
-    reconciliationsQuery ?? Promise.resolve({ data: [], error: null })
+        .order("id");
+      if (filters.status) query = query.eq("status", filters.status);
+      return query.range(from, to) as unknown as PromiseLike<{ data: Array<Omit<Row, "origin">> | null; error: unknown }>;
+    }),
+    includeCommissions
+      ? fetchAllReportRows<CommissionRow>((from, to) => supabase
+          .from("commissions")
+          .select("id,description,reference_date,due_date,commission_amount,status,payable_id,created_at,seller:commission_sellers!commissions_commission_seller_id_fkey(name,email)")
+          .eq("company_id", companyId)
+          .eq("status", "pendente")
+          .is("payable_id", null)
+          .order("created_at", { ascending: false })
+          .order("id")
+          .range(from, to) as unknown as PromiseLike<{ data: CommissionRow[] | null; error: unknown }>)
+      : Promise.resolve([] as CommissionRow[]),
+    includeBankTransactions
+      ? fetchAllReportRows<BankRow>((from, to) => supabase
+          .from("bank_transactions")
+          .select("id,transaction_date,description,amount,created_at,bank_accounts(bank_name)")
+          .eq("company_id", companyId)
+          .lt("amount", 0)
+          .gte("transaction_date", filters.from)
+          .lte("transaction_date", filters.to)
+          .order("transaction_date", { ascending: false })
+          .order("id")
+          .range(from, to) as unknown as PromiseLike<{ data: BankRow[] | null; error: unknown }>)
+      : Promise.resolve([] as BankRow[]),
+    includeBankTransactions
+      ? fetchAllReportRows<ReconciliationRow>((from, to) => supabase
+          .from("bank_reconciliations")
+          .select("bank_transaction_id,payable_id")
+          .eq("company_id", companyId)
+          .order("bank_transaction_id")
+          .range(from, to) as unknown as PromiseLike<{ data: ReconciliationRow[] | null; error: unknown }>)
+      : Promise.resolve([] as ReconciliationRow[])
   ]);
-  if (payablesResult.error) throw payablesResult.error;
-  if (commissionsResult.error) throw commissionsResult.error;
-  if (bankTransactionsResult.error) throw bankTransactionsResult.error;
-  if (reconciliationsResult.error) throw reconciliationsResult.error;
 
-  const payableRows = ((payablesResult.data || []) as Omit<Row, "origin">[])
+  const payableRows = payablesData
     .filter((row) => dateInRange(row.created_at, filters) || dateInRange(row.due_date, filters) || dateInRange(row.paid_at, filters))
     .map((row) => ({
       ...row,
       origin: row.category === "Comissoes" ? "Comissao aprovada" : "Conta a pagar"
     }));
-  const commissionRows = (commissionsResult.data || [])
+  const commissionRows = commissionsData
     .filter((commission) => (
       dateInRange(commission.created_at, filters)
       || dateInRange(commission.reference_date, filters)
@@ -281,12 +339,12 @@ async function payablesReport(filters: ReportFilters): Promise<ReportResult> {
     });
 
   const reconciliations = new Map<string, Array<{ payable_id: string | null }>>();
-  for (const reconciliation of reconciliationsResult.data || []) {
+  for (const reconciliation of reconciliationsData) {
     const current = reconciliations.get(reconciliation.bank_transaction_id) || [];
     current.push({ payable_id: reconciliation.payable_id });
     reconciliations.set(reconciliation.bank_transaction_id, current);
   }
-  const bankRows = (bankTransactionsResult.data || []).flatMap((transaction) => {
+  const bankRows = bankTransactionsData.flatMap((transaction) => {
     const transactionReconciliations = reconciliations.get(transaction.id) || [];
     if (transactionReconciliations.some((reconciliation) => reconciliation.payable_id)) return [];
     const status = transactionReconciliations.length ? "conciliado" : "pago";
@@ -376,18 +434,19 @@ async function commissionsReport(filters: ReportFilters): Promise<ReportResult> 
   };
 
   const { supabase, companyId } = await getReportContext();
-  let query = supabase
-    .from("commissions")
-    .select("id,description,source_type,reference_date,due_date,base_amount,rate_percent,commission_amount,status,paid_at,payment_method,seller:commission_sellers!commissions_commission_seller_id_fkey(name,email)")
-    .eq("company_id", companyId)
-    .gte("reference_date", filters.from)
-    .lte("reference_date", filters.to)
-    .order("reference_date", { ascending: false })
-    .limit(2000);
-  if (filters.status) query = query.eq("status", filters.status);
-  const { data, error } = await query;
-  if (error) throw error;
-  const rows = searchRows((data || []) as Row[], filters.search, (row) => {
+  const data = await fetchAllReportRows<Row>((from, to) => {
+    let query = supabase
+      .from("commissions")
+      .select("id,description,source_type,reference_date,due_date,base_amount,rate_percent,commission_amount,status,paid_at,payment_method,seller:commission_sellers!commissions_commission_seller_id_fkey(name,email)")
+      .eq("company_id", companyId)
+      .gte("reference_date", filters.from)
+      .lte("reference_date", filters.to)
+      .order("reference_date", { ascending: false })
+      .order("id");
+    if (filters.status) query = query.eq("status", filters.status);
+    return query.range(from, to) as unknown as PromiseLike<{ data: Row[] | null; error: unknown }>;
+  });
+  const rows = searchRows(data, filters.search, (row) => {
     const seller = Array.isArray(row.seller) ? row.seller[0] : row.seller;
     return [row.description, row.source_type, row.status, seller?.name, seller?.email];
   });
@@ -451,17 +510,18 @@ async function inventoryReport(filters: ReportFilters): Promise<ReportResult> {
   };
 
   const { supabase, companyId } = await getReportContext();
-  let query = supabase
-    .from("products")
-    .select("id,sku,name,category,unit,cost_price,sale_price,current_stock,min_stock,active")
-    .eq("company_id", companyId)
-    .order("name")
-    .limit(2000);
-  if (filters.status === "ativo") query = query.eq("active", true);
-  if (filters.status === "inativo") query = query.eq("active", false);
-  const { data, error } = await query;
-  if (error) throw error;
-  let rows = searchRows((data || []) as Row[], filters.search, (row) => [row.sku, row.name, row.category]);
+  const data = await fetchAllReportRows<Row>((from, to) => {
+    let query = supabase
+      .from("products")
+      .select("id,sku,name,category,unit,cost_price,sale_price,current_stock,min_stock,active")
+      .eq("company_id", companyId)
+      .order("name")
+      .order("id");
+    if (filters.status === "ativo") query = query.eq("active", true);
+    if (filters.status === "inativo") query = query.eq("active", false);
+    return query.range(from, to) as unknown as PromiseLike<{ data: Row[] | null; error: unknown }>;
+  });
+  let rows = searchRows(data, filters.search, (row) => [row.sku, row.name, row.category]);
   if (filters.status === "baixo") rows = rows.filter((row) => row.active && Number(row.current_stock) <= Number(row.min_stock));
   const active = rows.filter((row) => row.active);
   const low = active.filter((row) => Number(row.current_stock) <= Number(row.min_stock));
@@ -514,18 +574,19 @@ async function servicesReport(filters: ReportFilters): Promise<ReportResult> {
   };
 
   const { supabase, companyId } = await getReportContext();
-  let query = supabase
-    .from("service_records")
-    .select("id,service_date,due_date,service_description,service_type,amount,status,clients(legal_name)")
-    .eq("company_id", companyId)
-    .gte("service_date", filters.from)
-    .lte("service_date", filters.to)
-    .order("service_date", { ascending: false })
-    .limit(2000);
-  if (filters.status) query = query.eq("status", filters.status);
-  const { data, error } = await query;
-  if (error) throw error;
-  const rows = searchRows((data || []) as Row[], filters.search, (row) => [row.service_description, row.service_type, row.status, clientName(row.clients)]);
+  const data = await fetchAllReportRows<Row>((from, to) => {
+    let query = supabase
+      .from("service_records")
+      .select("id,service_date,due_date,service_description,service_type,amount,status,clients(legal_name)")
+      .eq("company_id", companyId)
+      .gte("service_date", filters.from)
+      .lte("service_date", filters.to)
+      .order("service_date", { ascending: false })
+      .order("id");
+    if (filters.status) query = query.eq("status", filters.status);
+    return query.range(from, to) as unknown as PromiseLike<{ data: Row[] | null; error: unknown }>;
+  });
+  const rows = searchRows(data, filters.search, (row) => [row.service_description, row.service_type, row.status, clientName(row.clients)]);
   const valid = rows.filter((row) => row.status !== "cancelado");
   const billed = rows.filter((row) => row.status === "faturado");
 
@@ -572,20 +633,63 @@ async function clientsReport(filters: ReportFilters): Promise<ReportResult> {
     phone: string | null;
     status: string;
   };
+  type OpticalRow = {
+    id: string;
+    client_id: string;
+    exam_date: string;
+    professional_name: string | null;
+    right_eye: EyeData | null;
+    left_eye: EyeData | null;
+    clinical_data: ClinicalData | null;
+    notes: string | null;
+    created_at: string;
+  };
 
   const { supabase, companyId } = await getReportContext();
-  let query = supabase
-    .from("clients")
-    .select("id,created_at,legal_name,trade_name,document,fiscal_email,financial_email,phone,status")
-    .eq("company_id", companyId)
-    .gte("created_at", `${filters.from}T00:00:00`)
-    .lte("created_at", `${filters.to}T23:59:59`)
-    .order("created_at", { ascending: false })
-    .limit(2000);
-  if (filters.status) query = query.eq("status", filters.status);
-  const { data, error } = await query;
-  if (error) throw error;
-  const rows = searchRows((data || []) as Row[], filters.search, (row) => [row.legal_name, row.trade_name, row.document, row.fiscal_email, row.financial_email, row.phone]);
+  const [data, companyResult] = await Promise.all([
+    fetchAllReportRows<Row>((from, to) => {
+      let query = supabase
+        .from("clients")
+        .select("id,created_at,legal_name,trade_name,document,fiscal_email,financial_email,phone,status")
+        .eq("company_id", companyId)
+        .gte("created_at", `${filters.from}T00:00:00`)
+        .lte("created_at", `${filters.to}T23:59:59`)
+        .order("created_at", { ascending: false })
+        .order("id");
+      if (filters.status) query = query.eq("status", filters.status);
+      return query.range(from, to) as unknown as PromiseLike<{ data: Row[] | null; error: unknown }>;
+    }),
+    supabase.from("companies").select("service_segment").eq("id", companyId).maybeSingle()
+  ]);
+  if (companyResult.error) throw companyResult.error;
+  const isOptical = companyResult.data?.service_segment === "otica";
+  const opticalData = isOptical
+    ? await fetchAllReportRows<OpticalRow>((from, to) => supabase
+        .from("client_optical_records")
+        .select("id,client_id,exam_date,professional_name,right_eye,left_eye,clinical_data,notes,created_at")
+        .eq("company_id", companyId)
+        .order("exam_date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .order("id")
+        .range(from, to) as unknown as PromiseLike<{ data: OpticalRow[] | null; error: unknown }>)
+    : [];
+  const latestPrescription = new Map<string, OpticalRow>();
+  for (const prescription of opticalData) {
+    if (!latestPrescription.has(prescription.client_id)) latestPrescription.set(prescription.client_id, prescription);
+  }
+  const withPrescription = data.map((row) => ({ ...row, prescription: latestPrescription.get(row.id) }));
+  const rows = searchRows(withPrescription, filters.search, (row) => [
+    row.legal_name,
+    row.trade_name,
+    row.document,
+    row.fiscal_email,
+    row.financial_email,
+    row.phone,
+    row.prescription?.professional_name,
+    formatEye(row.prescription?.right_eye || null),
+    formatEye(row.prescription?.left_eye || null),
+    formatClinical(row.prescription?.clinical_data || null, row.prescription?.notes || null)
+  ]);
 
   return {
     title: "Clientes",
@@ -594,7 +698,9 @@ async function clientsReport(filters: ReportFilters): Promise<ReportResult> {
     metrics: [
       { label: "Cadastrados no periodo", value: formatNumber(rows.length, 0) },
       { label: "Ativos", value: formatNumber(rows.filter((row) => row.status === "ativo").length, 0) },
-      { label: "Com e-mail fiscal", value: formatNumber(rows.filter((row) => Boolean(row.fiscal_email)).length, 0) },
+      isOptical
+        ? { label: "Com receita", value: formatNumber(rows.filter((row) => Boolean(row.prescription)).length, 0), detail: "Receita mais recente vinculada" }
+        : { label: "Com e-mail fiscal", value: formatNumber(rows.filter((row) => Boolean(row.fiscal_email)).length, 0) },
       { label: "Com telefone", value: formatNumber(rows.filter((row) => Boolean(row.phone)).length, 0) }
     ],
     columns: [
@@ -605,18 +711,35 @@ async function clientsReport(filters: ReportFilters): Promise<ReportResult> {
       { key: "fiscalEmail", label: "E-mail fiscal" },
       { key: "financialEmail", label: "E-mail financeiro" },
       { key: "phone", label: "Telefone" },
+      ...(isOptical ? [
+        { key: "prescriptionDate", label: "Data da receita" },
+        { key: "professional", label: "Profissional" },
+        { key: "rightEye", label: "OD" },
+        { key: "leftEye", label: "OE" },
+        { key: "clinical", label: "Dados da receita" }
+      ] : []),
       { key: "status", label: "Status" }
     ],
-    rows: rows.map((row) => ({
-      created: formatDate(row.created_at),
-      legalName: row.legal_name,
-      tradeName: row.trade_name || "-",
-      document: row.document,
-      fiscalEmail: row.fiscal_email || "-",
-      financialEmail: row.financial_email || "-",
-      phone: row.phone || "-",
-      status: labelStatus(row.status)
-    }))
+    rows: rows.map((row) => {
+      const prescription = row.prescription;
+      return {
+        created: formatDate(row.created_at),
+        legalName: row.legal_name,
+        tradeName: row.trade_name || "-",
+        document: row.document,
+        fiscalEmail: row.fiscal_email || "-",
+        financialEmail: row.financial_email || "-",
+        phone: row.phone || "-",
+        ...(isOptical ? {
+          prescriptionDate: formatDate(prescription?.exam_date),
+          professional: prescription?.professional_name || "-",
+          rightEye: formatEye(prescription?.right_eye || null),
+          leftEye: formatEye(prescription?.left_eye || null),
+          clinical: formatClinical(prescription?.clinical_data || null, prescription?.notes || null)
+        } : {}),
+        status: labelStatus(row.status)
+      };
+    })
   };
 }
 
@@ -634,18 +757,19 @@ async function fiscalReport(filters: ReportFilters): Promise<ReportResult> {
   };
 
   const { supabase, companyId } = await getReportContext();
-  let query = supabase
-    .from("nfse_documents")
-    .select("id,created_at,external_id,competence,service_amount,protocol,rejection_message,status,clients(legal_name)")
-    .eq("company_id", companyId)
-    .gte("created_at", `${filters.from}T00:00:00`)
-    .lte("created_at", `${filters.to}T23:59:59`)
-    .order("created_at", { ascending: false })
-    .limit(2000);
-  if (filters.status) query = query.eq("status", filters.status);
-  const { data, error } = await query;
-  if (error) throw error;
-  const rows = searchRows((data || []) as Row[], filters.search, (row) => [row.external_id, row.protocol, row.competence, row.status, row.rejection_message, clientName(row.clients)]);
+  const data = await fetchAllReportRows<Row>((from, to) => {
+    let query = supabase
+      .from("nfse_documents")
+      .select("id,created_at,external_id,competence,service_amount,protocol,rejection_message,status,clients(legal_name)")
+      .eq("company_id", companyId)
+      .gte("created_at", `${filters.from}T00:00:00`)
+      .lte("created_at", `${filters.to}T23:59:59`)
+      .order("created_at", { ascending: false })
+      .order("id");
+    if (filters.status) query = query.eq("status", filters.status);
+    return query.range(from, to) as unknown as PromiseLike<{ data: Row[] | null; error: unknown }>;
+  });
+  const rows = searchRows(data, filters.search, (row) => [row.external_id, row.protocol, row.competence, row.status, row.rejection_message, clientName(row.clients)]);
   const authorized = rows.filter((row) => row.status === "autorizada");
 
   return {

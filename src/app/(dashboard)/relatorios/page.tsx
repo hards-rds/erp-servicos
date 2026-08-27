@@ -1,7 +1,7 @@
 import { Download, Search } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/layout/page-header";
-import { ReportPrintButton } from "@/components/reports/report-print-button";
+import { ReportAutoPrint, ReportPrintButton } from "@/components/reports/report-print-button";
 import { MetricCard } from "@/components/ui/metric-card";
 import { getReportData } from "@/lib/reports/report-data";
 import { parseReportFilters, REPORT_KEYS, reportLabels, reportStatuses } from "@/lib/reports/types";
@@ -16,9 +16,24 @@ function reportLink(report: string, filters: Awaited<ReturnType<typeof parseRepo
   return `/relatorios?${params.toString()}`;
 }
 
+function pageLink(filters: Awaited<ReturnType<typeof parseReportFilters>>, page: number) {
+  const params = new URLSearchParams({ report: filters.report, from: filters.from, to: filters.to, page: String(page) });
+  if (filters.status) params.set("status", filters.status);
+  if (filters.search) params.set("search", filters.search);
+  return `/relatorios?${params.toString()}`;
+}
+
 export default async function ReportsPage({ searchParams }: ReportsPageProps) {
-  const filters = parseReportFilters(await searchParams || {});
+  const rawParams = await searchParams || {};
+  const filters = parseReportFilters(rawParams);
   const report = await getReportData(filters);
+  const printAll = rawParams.view === "print";
+  const pageSize = 100;
+  const requestedPage = Math.max(1, Number.parseInt(rawParams.page || "1", 10) || 1);
+  const totalPages = Math.max(1, Math.ceil(report.rows.length / pageSize));
+  const currentPage = Math.min(requestedPage, totalPages);
+  const firstRow = (currentPage - 1) * pageSize;
+  const visibleRows = printAll ? report.rows : report.rows.slice(firstRow, firstRow + pageSize);
   const exportParams = new URLSearchParams({
     report: filters.report,
     from: filters.from,
@@ -26,22 +41,25 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   });
   if (filters.status) exportParams.set("status", filters.status);
   if (filters.search) exportParams.set("search", filters.search);
+  const printParams = new URLSearchParams(exportParams);
+  printParams.set("view", "print");
 
   return (
     <>
+      {printAll ? <ReportAutoPrint /> : null}
       <PageHeader
         area="Gestao / Relatorios"
         title="Relatorios"
         description="Analise os dados da empresa ativa e exporte os resultados para Excel ou PDF."
-        action={(
+        action={!printAll ? (
           <div className="page-actions report-export-actions">
-            <ReportPrintButton />
+            <ReportPrintButton href={`/relatorios?${printParams.toString()}`} />
             <a className="primary-button button-link button-with-icon" href={`/api/relatorios/exportar?${exportParams.toString()}`}>
               <Download aria-hidden="true" size={17} />
               Exportar CSV
             </a>
           </div>
-        )}
+        ) : undefined}
       />
 
       <nav className="report-tabs" aria-label="Tipos de relatorio">
@@ -108,8 +126,8 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
               </tr>
             </thead>
             <tbody>
-              {report.rows.length ? report.rows.map((row, index) => (
-                <tr key={`${filters.report}-${index}`}>
+              {visibleRows.length ? visibleRows.map((row, index) => (
+                <tr key={`${filters.report}-${firstRow + index}`}>
                   {report.columns.map((column) => (
                     <td className={column.align === "right" ? "number-cell" : undefined} key={column.key}>
                       {column.key === "status" ? <span className="badge">{row[column.key]}</span> : row[column.key]}
@@ -124,6 +142,18 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
             </tbody>
           </table>
         </div>
+        {!printAll && report.rows.length > pageSize ? (
+          <nav className="pagination report-pagination" aria-label="Paginacao do relatorio">
+            <span className="pagination-summary">
+              Exibindo {(firstRow + 1).toLocaleString("pt-BR")}-{Math.min(firstRow + pageSize, report.rows.length).toLocaleString("pt-BR")} de {report.rows.length.toLocaleString("pt-BR")}
+            </span>
+            <div className="pagination-actions">
+              <Link className={`ghost-button button-link compact-button ${currentPage === 1 ? "disabled-control" : ""}`} href={pageLink(filters, currentPage - 1)} aria-disabled={currentPage === 1}>Anterior</Link>
+              <span className="pagination-page">Pagina {currentPage} de {totalPages}</span>
+              <Link className={`ghost-button button-link compact-button ${currentPage === totalPages ? "disabled-control" : ""}`} href={pageLink(filters, currentPage + 1)} aria-disabled={currentPage === totalPages}>Proxima</Link>
+            </div>
+          </nav>
+        ) : null}
       </section>
     </>
   );
