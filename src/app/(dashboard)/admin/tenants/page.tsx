@@ -147,6 +147,7 @@ export default async function TenantsPage({
                           <RowActionsMenu label={`Acoes do tenant ${tenant.name}`}>
                             {(tenant.companies || []).map((company) => (
                               <div className="tenant-company-actions" key={company.id}>
+                                {company.service_segment === "otica" ? <a className="ghost-button button-link compact-button" href={`/admin/importacao-optica?companyId=${company.id}`}>Importar pacientes</a> : null}
                                 <TenantActions
                                   tenant={{
                                     id: tenant.id,

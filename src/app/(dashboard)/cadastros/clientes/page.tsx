@@ -32,8 +32,10 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
 };
 
 function formatDocument(value: string) {
+  if (value.startsWith("LEGADO-")) return "Nao informado";
   if (value.length === 11) return value.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
-  return value.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
+  if (value.length === 14) return value.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
+  return value || "Nao informado";
 }
 
 export default async function ClientesPage({ searchParams }: ClientesPageProps) {

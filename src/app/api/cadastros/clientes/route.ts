@@ -50,10 +50,23 @@ export async function POST(request: NextRequest) {
     return redirectWith(request, "deleted");
   }
 
-  const document = onlyDigits(readString(formData, "document"));
+  const rawDocument = readString(formData, "document");
+  let document = onlyDigits(rawDocument);
   const legalName = readString(formData, "legalName");
 
-  if (!legalName || !isValidCpfOrCnpj(document)) {
+  if (action === "update" && clientId && !isValidCpfOrCnpj(document)) {
+    const { data: existingClient } = await supabase
+      .from("clients")
+      .select("document")
+      .eq("id", clientId)
+      .eq("company_id", profile.company_id)
+      .maybeSingle();
+    if (existingClient?.document?.startsWith("LEGADO-") && rawDocument === existingClient.document) {
+      document = existingClient.document;
+    }
+  }
+
+  if (!legalName || (!isValidCpfOrCnpj(document) && !document.startsWith("LEGADO-"))) {
     return redirectWith(request, "invalid");
   }
 
