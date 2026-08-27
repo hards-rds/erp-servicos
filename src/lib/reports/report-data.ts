@@ -646,7 +646,10 @@ async function clientsReport(filters: ReportFilters): Promise<ReportResult> {
   };
 
   const { supabase, companyId } = await getReportContext();
-  const [data, companyResult] = await Promise.all([
+  const companyResult = await supabase.from("companies").select("service_segment").eq("id", companyId).maybeSingle();
+  if (companyResult.error) throw companyResult.error;
+  const isOptical = companyResult.data?.service_segment === "otica";
+  const [data, opticalData] = await Promise.all([
     fetchAllReportRows<Row>((from, to) => {
       let query = supabase
         .from("clients")
@@ -659,20 +662,17 @@ async function clientsReport(filters: ReportFilters): Promise<ReportResult> {
       if (filters.status) query = query.eq("status", filters.status);
       return query.range(from, to) as unknown as PromiseLike<{ data: Row[] | null; error: unknown }>;
     }),
-    supabase.from("companies").select("service_segment").eq("id", companyId).maybeSingle()
+    isOptical
+      ? fetchAllReportRows<OpticalRow>((from, to) => supabase
+          .from("client_optical_records")
+          .select("id,client_id,exam_date,professional_name,right_eye,left_eye,clinical_data,notes,created_at")
+          .eq("company_id", companyId)
+          .order("exam_date", { ascending: false })
+          .order("created_at", { ascending: false })
+          .order("id")
+          .range(from, to) as unknown as PromiseLike<{ data: OpticalRow[] | null; error: unknown }>)
+      : Promise.resolve([] as OpticalRow[])
   ]);
-  if (companyResult.error) throw companyResult.error;
-  const isOptical = companyResult.data?.service_segment === "otica";
-  const opticalData = isOptical
-    ? await fetchAllReportRows<OpticalRow>((from, to) => supabase
-        .from("client_optical_records")
-        .select("id,client_id,exam_date,professional_name,right_eye,left_eye,clinical_data,notes,created_at")
-        .eq("company_id", companyId)
-        .order("exam_date", { ascending: false })
-        .order("created_at", { ascending: false })
-        .order("id")
-        .range(from, to) as unknown as PromiseLike<{ data: OpticalRow[] | null; error: unknown }>)
-    : [];
   const latestPrescription = new Map<string, OpticalRow>();
   for (const prescription of opticalData) {
     if (!latestPrescription.has(prescription.client_id)) latestPrescription.set(prescription.client_id, prescription);

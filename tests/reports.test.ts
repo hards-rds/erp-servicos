@@ -39,7 +39,7 @@ test("busca todas as paginas mesmo quando a API limita cada resposta", async () 
   }, 1000);
 
   assert.equal(rows.length, 2505);
-  assert.deepEqual(ranges, [[0, 999], [1000, 1999], [2000, 2999]]);
+  assert.deepEqual(ranges, [[0, 999], [1000, 1999], [2000, 2999], [3000, 3999]]);
   assert.equal(rows.at(-1)?.id, 2504);
 });
 
