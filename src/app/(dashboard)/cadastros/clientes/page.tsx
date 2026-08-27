@@ -2,7 +2,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-type ClientesPageProps = { searchParams?: Promise<{ status?: string }> };
+type ClientesPageProps = { searchParams?: Promise<{ status?: string; page?: string; q?: string }> };
 type ClientRow = {
   id: string;
   legal_name: string;
@@ -31,6 +31,20 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   profile_error: { kind: "error", text: "Seu usuario ainda nao esta vinculado a uma empresa." }
 };
 
+const clientsPerPage = 50;
+
+function clientsPageUrl(page: number, search: string) {
+  const params = new URLSearchParams();
+  if (search) params.set("q", search);
+  if (page > 1) params.set("page", String(page));
+  const query = params.toString();
+  return `/cadastros/clientes${query ? `?${query}` : ""}`;
+}
+
+function safeSearchTerm(value: string) {
+  return value.replace(/[^\p{L}\p{N}\s@._-]/gu, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
 function formatDocument(value: string) {
   if (value.startsWith("LEGADO-")) return "Nao informado";
   if (value.length === 11) return value.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
@@ -40,20 +54,48 @@ function formatDocument(value: string) {
 
 export default async function ClientesPage({ searchParams }: ClientesPageProps) {
   const params = await searchParams;
+  const requestedPage = Math.max(1, Number.parseInt(params?.page || "1", 10) || 1);
+  const search = safeSearchTerm(params?.q || "");
+  const rangeStart = (requestedPage - 1) * clientsPerPage;
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   const { data: profile } = user
     ? await supabase.from("profiles").select("company_id").eq("id", user.id).maybeSingle()
     : { data: null };
-  const { data: clients } = profile?.company_id
-    ? await supabase
+  const { data: company } = profile?.company_id
+    ? await supabase.from("companies").select("service_segment").eq("id", profile.company_id).maybeSingle()
+    : { data: null };
+
+  let clientsQuery = profile?.company_id
+    ? supabase
       .from("clients")
-      .select("id,legal_name,trade_name,document,fiscal_email,phone,status")
+      .select("id,legal_name,trade_name,document,fiscal_email,phone,status", { count: "exact" })
       .eq("company_id", profile.company_id)
-      .order("created_at", { ascending: false })
-      .limit(100)
-    : { data: [] };
+    : null;
+
+  if (clientsQuery && search) {
+    clientsQuery = clientsQuery.or(`legal_name.ilike.%${search}%,trade_name.ilike.%${search}%,document.ilike.%${search.replace(/\D/g, "") || search}%`);
+  }
+
+  const { data: clients, count: totalClients } = clientsQuery
+    ? await clientsQuery
+      .order("legal_name", { ascending: true })
+      .range(rangeStart, rangeStart + clientsPerPage - 1)
+    : { data: [], count: 0 };
   const allClients = (clients || []) as ClientRow[];
+  const clientIds = allClients.map((client) => client.id);
+  const { data: opticalRecords } = company?.service_segment === "otica" && clientIds.length
+    ? await supabase
+      .from("client_optical_records")
+      .select("client_id")
+      .eq("company_id", profile?.company_id || "")
+      .in("client_id", clientIds)
+    : { data: [] };
+  const clientsWithPrescription = new Set((opticalRecords || []).map((record) => record.client_id));
+  const total = totalClients || 0;
+  const totalPages = Math.max(1, Math.ceil(total / clientsPerPage));
+  const firstVisible = total ? rangeStart + 1 : 0;
+  const lastVisible = Math.min(rangeStart + allClients.length, total);
   const message = params?.status ? statusMessages[params.status] : null;
 
   return (
@@ -66,10 +108,21 @@ export default async function ClientesPage({ searchParams }: ClientesPageProps) 
       />
       {message ? <div className={message.kind === "success" ? "form-success" : "form-error"}>{message.text}</div> : null}
       <section className="table-panel">
-        <h2>Clientes cadastrados</h2>
+        <div className="table-panel-heading">
+          <div>
+            <h2>Clientes cadastrados</h2>
+            <span className="list-count">{new Intl.NumberFormat("pt-BR").format(total)} {total === 1 ? "cliente" : "clientes"}</span>
+          </div>
+          <form className="list-search" action="/cadastros/clientes" method="get">
+            <label className="sr-only" htmlFor="client-search">Buscar cliente</label>
+            <input id="client-search" name="q" type="search" defaultValue={search} placeholder="Buscar por nome, CPF ou CNPJ" />
+            <button className="ghost-button" type="submit">Buscar</button>
+            {search ? <a className="ghost-button button-link" href="/cadastros/clientes">Limpar</a> : null}
+          </form>
+        </div>
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Nome/Razao social</th><th>CPF/CNPJ</th><th>E-mail fiscal</th><th>Telefone</th><th>Status</th><th>Acoes</th></tr></thead>
+            <thead><tr><th>Nome/Razao social</th><th>CPF/CNPJ</th><th>E-mail fiscal</th><th>Telefone</th>{company?.service_segment === "otica" ? <th>Receita</th> : null}<th>Status</th><th>Acoes</th></tr></thead>
             <tbody>
               {allClients.length ? allClients.map((client) => (
                 <tr key={client.id}>
@@ -77,10 +130,11 @@ export default async function ClientesPage({ searchParams }: ClientesPageProps) 
                   <td>{formatDocument(client.document)}</td>
                   <td>{client.fiscal_email || "-"}</td>
                   <td>{client.phone || "-"}</td>
+                  {company?.service_segment === "otica" ? <td>{clientsWithPrescription.has(client.id) ? <span className="badge success">Cadastrada</span> : <span className="badge">Nao cadastrada</span>}</td> : null}
                   <td><span className="badge success">{client.status}</span></td>
                   <td>
                     <RowActionsMenu label={`Acoes do cliente ${client.legal_name}`}>
-                      <a className="ghost-button button-link compact-button" href={`/cadastros/clientes/${client.id}/editar`}>Editar</a>
+                      <a className="ghost-button button-link compact-button" href={`/cadastros/clientes/${client.id}/editar`}>{company?.service_segment === "otica" ? "Editar / ver receita" : "Editar"}</a>
                       <form action="/api/cadastros/clientes" method="post">
                         <input type="hidden" name="action" value="delete" />
                         <input type="hidden" name="clientId" value={client.id} />
@@ -89,10 +143,18 @@ export default async function ClientesPage({ searchParams }: ClientesPageProps) 
                     </RowActionsMenu>
                   </td>
                 </tr>
-              )) : <tr><td colSpan={6}>Nenhum cliente cadastrado.</td></tr>}
+              )) : <tr><td colSpan={company?.service_segment === "otica" ? 7 : 6}>{search ? "Nenhum cliente encontrado para esta busca." : "Nenhum cliente cadastrado."}</td></tr>}
             </tbody>
           </table>
         </div>
+        <nav className="pagination" aria-label="Paginacao de clientes">
+          <span className="pagination-summary">Exibindo {new Intl.NumberFormat("pt-BR").format(firstVisible)}-{new Intl.NumberFormat("pt-BR").format(lastVisible)} de {new Intl.NumberFormat("pt-BR").format(total)}</span>
+          <div className="pagination-actions">
+            {requestedPage > 1 ? <a className="ghost-button button-link compact-button" href={clientsPageUrl(requestedPage - 1, search)}>Anterior</a> : <span className="ghost-button compact-button disabled-control">Anterior</span>}
+            <span className="pagination-page">Pagina {Math.min(requestedPage, totalPages)} de {totalPages}</span>
+            {requestedPage < totalPages ? <a className="ghost-button button-link compact-button" href={clientsPageUrl(requestedPage + 1, search)}>Proxima</a> : <span className="ghost-button compact-button disabled-control">Proxima</span>}
+          </div>
+        </nav>
       </section>
     </>
   );
