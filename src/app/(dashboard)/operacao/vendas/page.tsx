@@ -1,4 +1,6 @@
 import { PageHeader } from "@/components/layout/page-header";
+import { DeleteSaleButton } from "@/components/sales/delete-sale-button";
+import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -22,7 +24,16 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   error: { kind: "error", text: "Nao foi possivel registrar a venda agora." },
   commission_rule_missing: { kind: "error", text: "Configure o percentual deste vendedor para o item antes de concluir a venda." },
   commission_error: { kind: "error", text: "A venda foi registrada, mas nao foi possivel gerar a comissao." },
-  profile_error: { kind: "error", text: "Seu usuario ainda nao esta vinculado a uma empresa." }
+  profile_error: { kind: "error", text: "Seu usuario ainda nao esta vinculado a uma empresa." },
+  deleted: { kind: "success", text: "Venda excluida. O financeiro, a comissao e o estoque foram ajustados." },
+  delete_invalid: { kind: "error", text: "A venda informada e invalida." },
+  delete_not_found: { kind: "error", text: "A venda nao foi encontrada na empresa ativa." },
+  delete_forbidden: { kind: "error", text: "Seu usuario nao tem permissao para excluir vendas e seus lancamentos financeiros." },
+  delete_nfse: { kind: "error", text: "Esta venda possui uma NFS-e com efeito fiscal. Cancele ou trate o documento antes de excluir a venda." },
+  delete_charge: { kind: "error", text: "Esta venda possui uma cobranca bancaria ativa. Cancele a cobranca antes de excluir a venda." },
+  delete_reconciliation: { kind: "error", text: "Esta venda possui conciliacao bancaria e deve permanecer no historico." },
+  delete_commission_paid: { kind: "error", text: "A comissao desta venda ja foi paga ou conciliada e impede a exclusao." },
+  delete_error: { kind: "error", text: "Nao foi possivel excluir a venda. Nenhuma alteracao parcial foi mantida." }
 };
 
 function formatMoney(value: number | string) {
@@ -72,6 +83,7 @@ export default async function VendasPage({ searchParams }: VendasPageProps) {
                   <th>Cliente</th>
                   <th>Valor</th>
                   <th>Status</th>
+                  <th>Acoes</th>
                 </tr>
               </thead>
               <tbody>
@@ -82,10 +94,15 @@ export default async function VendasPage({ searchParams }: VendasPageProps) {
                     <td>{getClientName(sale)}</td>
                     <td>{formatMoney(sale.net_amount)}</td>
                     <td><StatusBadge tone={sale.status === "recebida" ? "success" : "warning"}>{sale.status}</StatusBadge></td>
+                    <td>
+                      <RowActionsMenu label={`Acoes da venda ${sale.description}`}>
+                        <DeleteSaleButton saleId={sale.id} description={sale.description} />
+                      </RowActionsMenu>
+                    </td>
                   </tr>
                 )) : (
                   <tr>
-                    <td colSpan={5}>Nenhuma venda registrada.</td>
+                    <td colSpan={6}>Nenhuma venda registrada.</td>
                   </tr>
                 )}
               </tbody>

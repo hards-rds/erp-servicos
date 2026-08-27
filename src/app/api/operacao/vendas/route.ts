@@ -42,6 +42,23 @@ export async function POST(request: NextRequest) {
   if (!profile?.company_id) return redirectWith(request, "profile_error");
 
   const formData = await request.formData();
+  const action = readString(formData, "action");
+
+  if (action === "delete") {
+    const saleId = readString(formData, "saleId");
+    if (!saleId) return redirectWith(request, "delete_invalid");
+
+    const { data: result, error } = await supabase.rpc("delete_sale_with_effects", {
+      target_sale_id: saleId
+    });
+    if (error) {
+      console.error("sale_delete_error", error);
+      return redirectWith(request, "delete_error");
+    }
+
+    return redirectWith(request, String(result || "delete_error"));
+  }
+
   const itemType = readString(formData, "itemType") as SaleItemType;
   const productId = readString(formData, "productId") || null;
   const catalogServiceId = readString(formData, "catalogServiceId") || null;
