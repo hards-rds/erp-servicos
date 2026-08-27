@@ -1,0 +1,12 @@
+.git
+.next
+node_modules
+.env*
+.vercel
+.vercel-backup-*
+tmp
+coverage
+*.pfx
+*.p12
+*.key
+*.pem
