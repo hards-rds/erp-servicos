@@ -68,10 +68,20 @@ export default async function ApisPage({ searchParams }: ApisPageProps) {
     <>
       <PageHeader
         area="Configuracoes / APIs"
-        title="Banco Inter"
-        description="Credenciais de cobranca por empresa, conexao mTLS e retorno automatico de pagamentos."
+        title="Integracoes"
+        description="Conectores protegidos por empresa para atendimento, cobranca e automacoes."
+        action={<a className="primary-button button-link" href="/configuracoes/apis/planetchat">Configurar PlanetChat</a>}
       />
       {message ? <div className={message.kind === "success" ? "form-success" : "form-error"}>{message.text}</div> : null}
+      <section className="table-panel">
+        <div className="table-panel-heading">
+          <div>
+            <h2>PlanetChat</h2>
+            <span className="list-count">Atendimentos do WhatsApp, ordens de servico e metricas da equipe.</span>
+          </div>
+          <a className="ghost-button button-link" href="/configuracoes/apis/planetchat">Abrir configuracao</a>
+        </div>
+      </section>
       <section className="table-panel">
         <h2>Ambientes configurados</h2>
         <div className="table-wrap">

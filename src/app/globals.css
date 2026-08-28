@@ -1099,6 +1099,94 @@ tbody tr:last-child td {
   gap: 14px;
 }
 
+.support-sync-grid {
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto;
+  align-items: end;
+}
+
+.support-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  border: 1px solid var(--line);
+  background: var(--line);
+}
+
+.support-detail-grid > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px;
+  background: var(--panel);
+}
+
+.support-detail-grid strong,
+.support-detail-grid small {
+  overflow-wrap: anywhere;
+}
+
+.support-timeline,
+.support-messages {
+  display: grid;
+  gap: 0;
+}
+
+.support-event {
+  display: grid;
+  grid-template-columns: minmax(170px, 220px) 1fr;
+  gap: 18px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.support-event:last-child,
+.support-message:last-child {
+  border-bottom: 0;
+}
+
+.support-event span,
+.support-message header span {
+  color: var(--muted);
+}
+
+.support-message {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.support-message header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.support-message p {
+  margin: 10px 0 0;
+  white-space: pre-wrap;
+}
+
+.raw-data {
+  margin-top: 20px;
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+
+.raw-data summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.raw-data pre {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  padding: 14px;
+  background: var(--panel-3);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1430,9 +1518,17 @@ tbody tr:last-child td {
   .auth-shell,
   .two-columns,
   .form-grid,
+  .support-sync-grid,
+  .support-detail-grid,
+  .support-event,
   .summary-grid,
   .settings-row {
     grid-template-columns: 1fr;
+  }
+
+  .support-message header {
+    flex-direction: column;
+    gap: 4px;
   }
 
   .auth-brand {

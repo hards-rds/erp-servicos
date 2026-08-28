@@ -23,6 +23,7 @@ const tenantPages = [
   "src/app/(dashboard)/fiscal/emissao-nfse/page.tsx",
   "src/app/(dashboard)/fiscal/notas-emitidas/page.tsx",
   "src/app/(dashboard)/operacao/estoque/page.tsx",
+  "src/app/(dashboard)/operacao/chamados/page.tsx",
   "src/app/(dashboard)/operacao/vendas/page.tsx"
 ];
 
@@ -31,6 +32,30 @@ test("paginas operacionais filtram explicitamente a empresa ativa", () => {
     const source = readFileSync(file, "utf8");
     assert.match(source, /\.eq\("company_id",/, `${file} precisa filtrar company_id`);
   }
+});
+
+test("integracao PlanetChat preserva tenant, historico e credenciais protegidas", () => {
+  const migration = readFileSync("supabase/migrations/20260828120000_planetchat_integration.sql", "utf8");
+  const sync = readFileSync("src/server/services/planetchat-sync-service.ts", "utf8");
+  const credentials = readFileSync("src/lib/integrations/planetchat-credentials.ts", "utf8");
+  const page = readFileSync("src/app/(dashboard)/operacao/chamados/page.tsx", "utf8");
+
+  for (const table of [
+    "support_orders",
+    "support_order_events",
+    "support_order_messages",
+    "planetchat_attendant_metrics",
+    "planetchat_sync_runs"
+  ]) {
+    assert.match(migration, new RegExp(`create policy ${table}_[\\s\\S]*?public\\.company_match\\(company_id\\)`));
+  }
+  assert.match(sync, /\.eq\("company_id", input\.companyId\)/);
+  assert.match(sync, /onConflict: "company_id,provider,external_id"/);
+  assert.match(sync, /previous\?\.match_status === "manual"/);
+  assert.match(migration, /c\.company_id = support_orders\.company_id/);
+  assert.match(migration, /s\.company_id = support_order_events\.company_id/);
+  assert.match(credentials, /encryptCertificateSecret/);
+  assert.doesNotMatch(page, /encrypted_payload|Authorization:\s*Bearer|intg_[A-Za-z0-9]/);
 });
 
 test("segmento escolar isola dados, preserva avaliacoes e gera mensalidade idempotente", () => {

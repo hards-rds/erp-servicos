@@ -24,6 +24,7 @@ import {
   LogOut,
   Mail,
   Menu,
+  MessagesSquare,
   Moon,
   Package,
   Plug,
@@ -70,7 +71,8 @@ const nav = [
     title: "Operacao",
     items: [
       { href: "/operacao/vendas", label: "Vendas", icon: ShoppingCart },
-      { href: "/operacao/estoque", label: "Estoque", icon: Package }
+      { href: "/operacao/estoque", label: "Estoque", icon: Package },
+      { href: "/operacao/chamados", label: "Chamados", icon: MessagesSquare, onlyForSegments: ["tecnologia"] }
     ]
   },
   {
