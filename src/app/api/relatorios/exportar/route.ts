@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireCompanyPermission } from "@/lib/auth/api-access";
 import { reportToCsv } from "@/lib/reports/csv";
 import { getReportData } from "@/lib/reports/report-data";
 import { parseReportFilters } from "@/lib/reports/types";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Nao autenticado." }, { status: 401 });
+  const access = await requireCompanyPermission({ module: "relatorios", action: "visualizar" });
+  if (!access.ok) {
+    return NextResponse.json(
+      { error: access.reason === "unauthorized" ? "Nao autenticado." : "Acesso negado." },
+      { status: access.reason === "unauthorized" ? 401 : 403 }
+    );
+  }
 
   const filters = parseReportFilters(Object.fromEntries(request.nextUrl.searchParams.entries()));
   const report = await getReportData(filters);

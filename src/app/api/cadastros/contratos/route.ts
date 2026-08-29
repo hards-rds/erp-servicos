@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { competenceFromDate, dueDateForCompetence } from "@/lib/dates/competence";
+import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
+import { competenceFromDate } from "@/lib/dates/competence";
 import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
+import {
+  ensureContractCharge,
+  ensureContractEntry,
+  ensureContractNfse,
+  type ContractFlowInput
+} from "@/server/services/contract-recurring-flow";
 import { processInterCharge } from "@/server/services/inter-charge-service";
+import { isPlanLimitError } from "@/domains/billing/saas-plans";
+import { canCreateTenantResource, tenantHasFeature } from "@/server/services/saas-plan-service";
 
 function readString(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
@@ -40,163 +49,6 @@ function hasValidNfseCodes(fiscalData: ReturnType<typeof collectFiscalServiceDat
   return !fiscalData.nbsCode || /^\d{9}$/.test(fiscalData.nbsCode);
 }
 
-type ContractFlowInput = {
-  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>;
-  companyId: string;
-  profileId: string;
-  contractId: string;
-  clientId: string;
-  description: string;
-  amount: number;
-  dueDay: number;
-};
-
-async function ensureContractEntry(input: ContractFlowInput) {
-  const competence = competenceFromDate(new Date());
-  const dueDate = dueDateForCompetence(competence, input.dueDay);
-  const entryKey = `contract:${input.contractId}:competence:${competence}:due:${dueDate}`;
-
-  const { data: existing } = await input.supabase
-    .from("financial_entries")
-    .select("id")
-    .eq("company_id", input.companyId)
-    .eq("idempotency_key", entryKey)
-    .maybeSingle();
-  if (existing?.id) return { entryId: existing.id, competence, dueDate };
-
-  const { data: entry, error: entryError } = await input.supabase
-    .from("financial_entries").insert({
-      company_id: input.companyId,
-      client_id: input.clientId,
-      contract_id: input.contractId,
-      type: "recorrente",
-      description: input.description,
-      competence,
-      due_date: dueDate,
-      gross_amount: input.amount,
-      discounts: 0,
-      interest: 0,
-      penalty: 0,
-      net_amount: input.amount,
-      status: "previsto",
-      idempotency_key: entryKey,
-      notes: "Gerado automaticamente a partir de contrato recorrente.",
-      created_by: input.profileId,
-      updated_by: input.profileId
-    }).select("id").single();
-
-  if (!entryError && entry?.id) return { entryId: entry.id, competence, dueDate };
-
-  const { data: concurrentEntry } = await input.supabase
-    .from("financial_entries")
-    .select("id")
-    .eq("company_id", input.companyId)
-    .eq("idempotency_key", entryKey)
-    .maybeSingle();
-  return concurrentEntry?.id ? { entryId: concurrentEntry.id, competence, dueDate } : null;
-}
-
-async function ensureContractNfse(input: ContractFlowInput, fiscalData: Record<string, unknown>) {
-  const competence = competenceFromDate(new Date());
-  const dueDate = dueDateForCompetence(competence, input.dueDay);
-  const nfseKey = `nfse:contract:${input.contractId}:competence:${competence}`;
-  const entryKey = `contract:${input.contractId}:competence:${competence}:due:${dueDate}`;
-  const { data: financialEntry } = await input.supabase
-    .from("financial_entries")
-    .select("id")
-    .eq("company_id", input.companyId)
-    .eq("idempotency_key", entryKey)
-    .maybeSingle();
-  const { data: existing } = await input.supabase
-    .from("nfse_documents")
-    .select("id")
-    .eq("company_id", input.companyId)
-    .eq("idempotency_key", nfseKey)
-    .maybeSingle();
-  if (existing?.id) {
-    if (financialEntry?.id) {
-      await input.supabase
-        .from("nfse_documents")
-        .update({ financial_entry_id: financialEntry.id, updated_at: new Date().toISOString() })
-        .eq("id", existing.id)
-        .eq("company_id", input.companyId);
-    }
-    return existing.id;
-  }
-
-  const { data: document, error } = await input.supabase.from("nfse_documents").insert({
-    company_id: input.companyId,
-    client_id: input.clientId,
-    financial_entry_id: financialEntry?.id || null,
-    status: "enfileirada",
-    competence,
-    service_amount: input.amount,
-    idempotency_key: nfseKey,
-    request_payload: {
-      source: "contract_recurrence",
-      contractId: input.contractId,
-      serviceDescription: input.description,
-      dueDate,
-      ...fiscalData
-    }
-  }).select("id").single();
-  if (!error && document?.id) return document.id;
-
-  const { data: concurrentDocument } = await input.supabase
-    .from("nfse_documents")
-    .select("id")
-    .eq("company_id", input.companyId)
-    .eq("idempotency_key", nfseKey)
-    .maybeSingle();
-  return concurrentDocument?.id || null;
-}
-
-async function linkContractEntryToNfse(
-  input: ContractFlowInput,
-  entry: NonNullable<Awaited<ReturnType<typeof ensureContractEntry>>>
-) {
-  const nfseKey = `nfse:contract:${input.contractId}:competence:${entry.competence}`;
-  await input.supabase
-    .from("nfse_documents")
-    .update({ financial_entry_id: entry.entryId, updated_at: new Date().toISOString() })
-    .eq("company_id", input.companyId)
-    .eq("idempotency_key", nfseKey);
-}
-
-async function ensureContractCharge(input: ContractFlowInput, entry: NonNullable<Awaited<ReturnType<typeof ensureContractEntry>>>) {
-  const chargeKey = `inter-charge:${entry.entryId}:${entry.dueDate}`;
-  const { data: existing } = await input.supabase
-    .from("boleto_charges")
-    .select("id")
-    .eq("company_id", input.companyId)
-    .eq("idempotency_key", chargeKey)
-    .maybeSingle();
-  if (existing?.id) return existing.id;
-
-  const { data: charge, error } = await input.supabase.from("boleto_charges").insert({
-    company_id: input.companyId,
-    financial_entry_id: entry.entryId,
-    status: "rascunho",
-    idempotency_key: chargeKey,
-    request_payload: {
-      source: "contract_recurrence",
-      contractId: input.contractId,
-      financialEntryId: entry.entryId,
-      dueDate: entry.dueDate,
-      amount: input.amount
-    }
-  }).select("id").single();
-  if (!error && charge?.id) return charge.id;
-
-  const { data: concurrentCharge } = await input.supabase
-    .from("boleto_charges")
-    .select("id")
-    .eq("company_id", input.companyId)
-    .eq("idempotency_key", chargeKey)
-    .maybeSingle();
-  return concurrentCharge?.id || null;
-}
-
 async function loadContractForAction(
   supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
   companyId: string,
@@ -212,24 +64,22 @@ async function loadContractForAction(
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) return NextResponse.redirect(new URL("/login", request.url), 303);
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id,company_id")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (!profile?.company_id) return redirectWith(request, "profile_error");
-
   const formData = await request.formData();
   const action = readString(formData, "action") || "create";
   const contractId = readString(formData, "contractId");
+  const permission = action === "issue_nfse"
+    ? { module: "fiscal.nfse", action: "emitir" as const }
+    : action === "issue_charge"
+      ? { module: "financeiro.cobrancas", action: "emitir" as const }
+      : action === "generate_financial"
+        ? { module: "financeiro.entradas", action: "criar" as const }
+        : { module: "cadastros.contratos", action: action === "update" ? "editar" as const : "criar" as const };
+  const access = await requireCompanyPermission(permission);
+  if (!access.ok) {
+    if (access.reason === "unauthorized") return NextResponse.redirect(new URL("/login", request.url), 303);
+    return redirectWith(request, access.reason === "forbidden" ? "forbidden" : "profile_error");
+  }
+  const { supabase, profile } = access;
 
   if (["generate_financial", "issue_nfse", "issue_charge"].includes(action)) {
     if (!contractId) return redirectWith(request, "invalid");
@@ -237,6 +87,7 @@ export async function POST(request: NextRequest) {
     if (!contract || contract.status !== "ativo") return redirectWith(request, "inactive");
 
     if (action === "issue_charge") {
+      if (!(await tenantHasFeature(profile.tenant_id, "api_integrations"))) return redirectWith(request, "feature_unavailable");
       const service = createServiceClient();
       const { data: interCredential } = await service
         .from("api_credentials")
@@ -262,7 +113,7 @@ export async function POST(request: NextRequest) {
     const input: ContractFlowInput = {
       supabase,
       companyId: profile.company_id,
-      profileId: profile.id,
+      actorId: profile.id,
       contractId: contract.id,
       clientId: contract.client_id,
       description: contract.service_description,
@@ -273,18 +124,25 @@ export async function POST(request: NextRequest) {
       const fiscalData = contract.fiscal_service_data && typeof contract.fiscal_service_data === "object"
         ? contract.fiscal_service_data as Record<string, unknown>
         : {};
-      const documentId = await ensureContractNfse(input, fiscalData);
+      const competence = competenceFromDate(new Date());
+      const entry = await ensureContractEntry(input, competence);
+      if (!entry) return redirectWith(request, "generate_error");
+      const documentId = await ensureContractNfse(input, entry, fiscalData);
+      if (documentId) await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "contract", entityId: contract.id, action: "queue_nfse", metadata: { documentId } });
       return documentId ? redirectToNfse(request, documentId) : redirectWith(request, "generate_error");
     }
 
-    const entry = await ensureContractEntry(input);
+    const entry = await ensureContractEntry(input, competenceFromDate(new Date()));
     if (!entry) return redirectWith(request, "generate_error");
-    await linkContractEntryToNfse(input, entry);
-    if (action === "generate_financial") return redirectWith(request, "financial_generated");
+    if (action === "generate_financial") {
+      await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "contract", entityId: contract.id, action: "generate_financial", metadata: { entryId: entry.entryId } });
+      return redirectWith(request, "financial_generated");
+    }
 
     const chargeId = await ensureContractCharge(input, entry);
     if (!chargeId) return redirectWith(request, "generate_error");
     const interResult = await processInterCharge(profile.company_id, chargeId, profile.id);
+    if (interResult.ok) await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "contract", entityId: contract.id, action: "issue_charge", metadata: { chargeId } });
     return redirectWith(request, interResult.ok ? "charge_issued" : "charge_error");
   }
 
@@ -310,13 +168,26 @@ export async function POST(request: NextRequest) {
     due_day: dueDay,
     starts_at: readString(formData, "startsAt") || new Date().toISOString().slice(0, 10),
     status: readString(formData, "status") || "ativo",
-    auto_issue_nfse: false,
-    auto_generate_charge: false,
+    auto_generate_financial: formData.get("autoGenerateFinancial") === "on",
+    auto_issue_nfse: formData.get("autoIssueNfse") === "on",
+    auto_generate_charge: formData.get("autoGenerateCharge") === "on",
     fiscal_service_data: fiscalServiceData,
     notes: readString(formData, "notes") || null,
     updated_by: profile.id,
     updated_at: new Date().toISOString()
   };
+
+  const wantsAutomation = contractPayload.auto_generate_financial || contractPayload.auto_issue_nfse || contractPayload.auto_generate_charge;
+  let enablesAutomation = wantsAutomation;
+  if (action === "update" && contractId && wantsAutomation) {
+    const { data: existingAutomation } = await supabase.from("contracts")
+      .select("auto_generate_financial,auto_issue_nfse,auto_generate_charge")
+      .eq("id", contractId).eq("company_id", profile.company_id).maybeSingle();
+    enablesAutomation = !existingAutomation?.auto_generate_financial && !existingAutomation?.auto_issue_nfse && !existingAutomation?.auto_generate_charge;
+  }
+  if (enablesAutomation && !(await tenantHasFeature(profile.tenant_id, "recurring_automation"))) {
+    return redirectWith(request, "feature_unavailable");
+  }
 
   if (action === "update") {
     if (!contractId) return redirectWith(request, "invalid");
@@ -327,16 +198,24 @@ export async function POST(request: NextRequest) {
       .eq("id", contractId)
       .eq("company_id", profile.company_id);
 
+    if (!error) await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "contract", entityId: contractId, action: "update" });
     return redirectWith(request, error ? "error" : "updated");
   }
 
-  const { error } = await supabase
+  const capacity = await canCreateTenantResource(profile.tenant_id, "recurrences");
+  if (!capacity.allowed) return redirectWith(request, "plan_limit");
+
+  const { data: created, error } = await supabase
     .from("contracts")
     .insert({
       company_id: profile.company_id,
       ...contractPayload,
       created_by: profile.id,
-    });
+    })
+    .select("id")
+    .single();
 
-  return redirectWith(request, error ? "error" : "created");
+  if (!error && created) await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "contract", entityId: created.id, action: "create" });
+
+  return redirectWith(request, error ? (isPlanLimitError(error) ? "plan_limit" : "error") : "created");
 }

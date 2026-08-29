@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { calculateSaleAmounts, saleItemMovesStock, type SaleItemType } from "@/domains/sales/items";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
 import { resolveSellerCommissionRate, syncSourceCommission } from "@/server/services/comissoes-service";
 
 function readString(formData: FormData, key: string) {
@@ -24,25 +24,17 @@ function redirectWith(request: NextRequest, status: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.redirect(new URL("/login", request.url), 303);
-  }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id,company_id")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (!profile?.company_id) return redirectWith(request, "profile_error");
-
   const formData = await request.formData();
   const action = readString(formData, "action");
+  const access = await requireCompanyPermission({
+    module: "operacao.vendas",
+    action: action === "delete" ? "excluir" : "criar"
+  });
+  if (!access.ok) {
+    if (access.reason === "unauthorized") return NextResponse.redirect(new URL("/login", request.url), 303);
+    return redirectWith(request, access.reason === "forbidden" ? "forbidden" : "profile_error");
+  }
+  const { supabase, profile } = access;
 
   if (action === "delete") {
     const saleId = readString(formData, "saleId");
@@ -55,6 +47,15 @@ export async function POST(request: NextRequest) {
       console.error("sale_delete_error", error);
       return redirectWith(request, "delete_error");
     }
+
+    await writeCompanyAudit({
+      companyId: profile.company_id,
+      actorId: profile.id,
+      entity: "sale",
+      entityId: saleId,
+      action: "delete",
+      metadata: { result: String(result || "") }
+    });
 
     return redirectWith(request, String(result || "delete_error"));
   }
@@ -234,6 +235,15 @@ export async function POST(request: NextRequest) {
     dueDate: readString(formData, "commissionDueDate") || saleDate
   });
   if (commissionResult.error) return redirectWith(request, "commission_error");
+
+  await writeCompanyAudit({
+    companyId: profile.company_id,
+    actorId: profile.id,
+    entity: "sale",
+    entityId: sale.id,
+    action: "create",
+    metadata: { itemType, status, netAmount }
+  });
 
   return redirectWith(request, "created");
 }

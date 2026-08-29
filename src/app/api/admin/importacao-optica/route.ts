@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
 import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
 import {
   buildOpticalImportPlan,
@@ -9,6 +10,7 @@ import {
   prescriptionInsertPayload,
   prescriptionSourceKey,
 } from "@/lib/import/optical-legacy";
+import { canCreateTenantResource } from "@/server/services/saas-plan-service";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -20,13 +22,21 @@ function jsonError(error: string, status = 400) {
   return NextResponse.json({ ok: false, error }, { status });
 }
 
-async function requireSystemAdmin() {
+async function requireImportActor(companyId: string) {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
   const { data: profile } = await supabase.from("profiles").select("id,role,active").eq("id", user.id).maybeSingle();
-  if (profile?.role !== "system_admin" || profile.active === false) return null;
-  return profile;
+  if (!profile || profile.active === false) return null;
+  if (profile.role === "system_admin") return profile;
+
+  const access = await requireCompanyPermission({
+    module: "cadastros.clientes",
+    action: "criar",
+    segment: "otica",
+    roles: ["master"]
+  });
+  return access.ok && access.company.id === companyId ? profile : null;
 }
 
 async function allClients(companyId: string) {
@@ -60,12 +70,11 @@ function chunks<T>(values: T[], size: number) {
 }
 
 export async function POST(request: NextRequest) {
-  const actor = await requireSystemAdmin();
-  if (!actor) return jsonError("Acesso restrito ao administrador do sistema.", 403);
-
   const formData = await request.formData();
   const action = String(formData.get("action") || "preview");
   const companyId = String(formData.get("companyId") || "").trim();
+  const actor = await requireImportActor(companyId);
+  if (!actor) return jsonError("Acesso restrito ao administrador da empresa.", 403);
   const clientsFile = formData.get("clientsFile");
   const prescriptionsFile = formData.get("prescriptionsFile");
   if (!companyId || !(clientsFile instanceof File) || !(prescriptionsFile instanceof File)) return jsonError("Selecione as duas planilhas XLSX.");
@@ -113,6 +122,12 @@ export async function POST(request: NextRequest) {
       const existing = byDocument || byUniqueName;
       if (existing) sourceClientIds.set(sourceClient.sourceRow, existing.id);
       else newClientRows.push(clientInsertPayload(sourceClient, companyId, actor.id));
+    }
+
+    const capacity = await canCreateTenantResource(company.tenant_id, "clients");
+    const available = capacity.limit === null ? Number.POSITIVE_INFINITY : Math.max(0, capacity.limit - capacity.usage);
+    if (newClientRows.length > available) {
+      return jsonError(`O plano ${capacity.plan.name} permite mais ${Number.isFinite(available) ? available.toLocaleString("pt-BR") : "registros ilimitados"} clientes. Nenhum dado foi importado.`, 409);
     }
 
     let insertedClients = 0;
@@ -163,13 +178,13 @@ export async function POST(request: NextRequest) {
       skippedExistingPrescriptions,
       reviewRows: reviewRows.size,
     };
-    await service.from("audit_logs").insert({
-      company_id: companyId,
-      actor_id: actor.id,
+    await writeCompanyAudit({
+      companyId,
+      actorId: actor.id,
       entity: "optical_import",
       action: "import",
       reason: "Importacao administrativa de clientes e receitas opticas legadas.",
-      metadata: { ...imported, clientsFile: clientsFile.name, prescriptionsFile: prescriptionsFile.name },
+      metadata: { ...imported, clientsFile: clientsFile.name, prescriptionsFile: prescriptionsFile.name }
     });
     return NextResponse.json({ ok: true, summary, imported });
   } catch (error) {

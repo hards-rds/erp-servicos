@@ -14,7 +14,8 @@ const messages: Record<string, { kind: "success" | "error"; text: string }> = {
   forbidden: { kind: "error", text: "Apenas usuarios master podem configurar a PlanetChat." },
   segment_error: { kind: "error", text: "A integracao PlanetChat esta disponivel somente para empresas do segmento Tecnologia." },
   profile_error: { kind: "error", text: "Seu usuario nao esta ativo ou vinculado a uma empresa." },
-  save_error: { kind: "error", text: "Nao foi possivel proteger e salvar a integracao PlanetChat." }
+  save_error: { kind: "error", text: "Nao foi possivel proteger e salvar a integracao PlanetChat." },
+  plan_feature: { kind: "error", text: "Integracoes com APIs exigem o plano Pro ou Enterprise." }
 };
 
 function summary(record: Record<string, unknown> | null | undefined, key: string) {

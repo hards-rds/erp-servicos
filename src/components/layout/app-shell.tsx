@@ -9,9 +9,12 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   const { data: profile } = user
     ? await supabase.from("profiles").select("name,email,role,company_id,tenant_id").eq("id", user.id).maybeSingle()
     : { data: null };
-  const { data: company } = profile?.company_id
-    ? await supabase.from("companies").select("name,service_segment").eq("id", profile.company_id).maybeSingle()
-    : { data: null };
+  const [{ data: company }, unreadResult] = profile?.company_id
+    ? await Promise.all([
+      supabase.from("companies").select("name,service_segment").eq("id", profile.company_id).maybeSingle(),
+      supabase.from("app_notifications").select("id", { count: "exact", head: true }).eq("company_id", profile.company_id).is("read_at", null)
+    ])
+    : [{ data: null }, { count: 0 }];
 
   return (
     <AppShellClient
@@ -21,6 +24,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       activeCompanyName={company?.name || null}
       activeCompanySegment={company?.service_segment || null}
       isSystemAdmin={profile?.role === "system_admin"}
+      unreadNotifications={unreadResult.count || 0}
     >
       {children}
     </AppShellClient>

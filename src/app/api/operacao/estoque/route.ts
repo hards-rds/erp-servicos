@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
+import { isPlanLimitError } from "@/domains/billing/saas-plans";
+import { canCreateTenantResource } from "@/server/services/saas-plan-service";
 
 function readString(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
@@ -22,25 +24,17 @@ function redirectWith(request: NextRequest, status: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.redirect(new URL("/login", request.url), 303);
-  }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id,company_id")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (!profile?.company_id) return redirectWith(request, "profile_error");
-
   const formData = await request.formData();
   const action = readString(formData, "action") || "product";
+  const access = await requireCompanyPermission({
+    module: "operacao.estoque",
+    action: action === "movement" ? "editar" : "criar"
+  });
+  if (!access.ok) {
+    if (access.reason === "unauthorized") return NextResponse.redirect(new URL("/login", request.url), 303);
+    return redirectWith(request, access.reason === "forbidden" ? "forbidden" : "profile_error");
+  }
+  const { supabase, profile } = access;
 
   if (action === "movement") {
     const productId = readString(formData, "productId");
@@ -88,7 +82,16 @@ export async function POST(request: NextRequest) {
       .eq("id", product.id)
       .eq("company_id", profile.company_id);
 
-    return redirectWith(request, productError ? "movement_error" : "movement_created");
+    if (productError) return redirectWith(request, "movement_error");
+    await writeCompanyAudit({
+      companyId: profile.company_id,
+      actorId: profile.id,
+      entity: "product",
+      entityId: product.id,
+      action: "stock_movement",
+      metadata: { type, quantity, previousStock: currentStock, nextStock }
+    });
+    return redirectWith(request, "movement_created");
   }
 
   const name = readString(formData, "name");
@@ -100,6 +103,9 @@ export async function POST(request: NextRequest) {
   if (!name || salePrice === null || salePrice < 0 || costPrice < 0 || minStock < 0 || initialStock < 0) {
     return redirectWith(request, "product_invalid");
   }
+
+  const capacity = await canCreateTenantResource(profile.tenant_id, "catalog_items");
+  if (!capacity.allowed) return redirectWith(request, "plan_limit");
 
   const { data: product, error } = await supabase.from("products").insert({
     company_id: profile.company_id,
@@ -116,7 +122,7 @@ export async function POST(request: NextRequest) {
     updated_by: profile.id
   }).select("id").single();
 
-  if (error || !product?.id) return redirectWith(request, error?.code === "23505" ? "duplicate" : "product_error");
+  if (error || !product?.id) return redirectWith(request, error?.code === "23505" ? "duplicate" : isPlanLimitError(error) ? "plan_limit" : "product_error");
 
   if (initialStock > 0) {
     await supabase.from("stock_movements").insert({
@@ -130,6 +136,15 @@ export async function POST(request: NextRequest) {
       created_by: profile.id
     });
   }
+
+  await writeCompanyAudit({
+    companyId: profile.company_id,
+    actorId: profile.id,
+    entity: "product",
+    entityId: product.id,
+    action: "create",
+    metadata: { initialStock }
+  });
 
   return redirectWith(request, "product_created");
 }

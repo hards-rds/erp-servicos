@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
 import { cancelStoredInterCharge, processInterCharge } from "@/server/services/inter-charge-service";
+import { tenantHasFeature } from "@/server/services/saas-plan-service";
 
 export const runtime = "nodejs";
 
@@ -13,19 +14,18 @@ function redirectWith(request: NextRequest, status: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(new URL("/login", request.url), 303);
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id,company_id,active")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!profile?.company_id || !profile.active) return redirectWith(request, "profile_error");
-
   const formData = await request.formData();
   const action = readString(formData, "action");
+  const permissionAction = action === "create" ? "criar" : action === "cancel" ? "cancelar" : "emitir";
+  const access = await requireCompanyPermission({ module: "financeiro.cobrancas", action: permissionAction });
+  if (!access.ok) {
+    if (access.reason === "unauthorized") return NextResponse.redirect(new URL("/login", request.url), 303);
+    return redirectWith(request, access.reason === "forbidden" ? "forbidden" : "profile_error");
+  }
+  const { supabase, profile } = access;
+  if (["create", "process"].includes(action) && !(await tenantHasFeature(profile.tenant_id, "api_integrations"))) {
+    return redirectWith(request, "plan_feature");
+  }
   let chargeId = readString(formData, "chargeId");
 
   if (action === "create") {
@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
     if (reason.length < 5) return redirectWith(request, "cancel_invalid");
     try {
       await cancelStoredInterCharge(profile.company_id, charge.id, reason, profile.id);
+      await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "boleto_charge", entityId: charge.id, action: "cancel", reason });
       return redirectWith(request, "cancelled");
     } catch {
       return redirectWith(request, "cancel_error");
@@ -71,5 +72,6 @@ export async function POST(request: NextRequest) {
   }
 
   const result = await processInterCharge(profile.company_id, charge.id, profile.id);
+  if (result.ok) await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "boleto_charge", entityId: charge.id, action, metadata: { status: result.status } });
   return redirectWith(request, result.ok ? (action === "sync" ? "synced" : "issued") : "inter_error");
 }

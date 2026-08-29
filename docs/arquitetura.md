@@ -14,6 +14,7 @@
 - `finance`: entradas, saidas, fluxo de caixa e conciliacao.
 - `fiscal`: NFS-e, status e validacoes previas.
 - `billing`: cobrancas Banco Inter e webhooks idempotentes.
+- `saas_billing`: planos, limites, assinatura e faturas da plataforma, sem reflexo no financeiro operacional dos tenants.
 - `users`: RBAC por grupos e permissoes.
 - `settings`: configuracoes sensiveis e mascaramento.
 

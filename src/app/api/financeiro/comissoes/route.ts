@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertCommissionTransition, calculateCommissionAmount, type CommissionStatus } from "@/domains/finance/commissions";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
 
 function readString(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
@@ -17,19 +17,15 @@ function redirectWith(request: NextRequest, status: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(new URL("/login", request.url), 303);
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id,company_id")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!profile?.company_id) return redirectWith(request, "profile_error");
-
   const formData = await request.formData();
   const action = readString(formData, "action");
+  const permissionAction = action === "create" ? "criar" : action === "cancel" ? "cancelar" : "aprovar";
+  const access = await requireCompanyPermission({ module: "financeiro.comissoes", action: permissionAction });
+  if (!access.ok) {
+    if (access.reason === "unauthorized") return NextResponse.redirect(new URL("/login", request.url), 303);
+    return redirectWith(request, access.reason === "forbidden" ? "forbidden" : "profile_error");
+  }
+  const { supabase, profile } = access;
 
   if (action === "create") {
     const sellerId = readString(formData, "sellerId");
@@ -56,7 +52,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
     if (!seller) return redirectWith(request, "invalid_seller");
 
-    const { error } = await supabase.from("commissions").insert({
+    const { data: created, error } = await supabase.from("commissions").insert({
       company_id: profile.company_id,
       commission_seller_id: seller.id,
       seller_id: seller.profile_id,
@@ -71,7 +67,9 @@ export async function POST(request: NextRequest) {
       notes: readString(formData, "notes") || null,
       created_by: profile.id,
       updated_by: profile.id
-    });
+    }).select("id").single();
+
+    if (!error && created) await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "commission", entityId: created.id, action: "create" });
 
     return redirectWith(request, error ? "error" : "created");
   }
@@ -133,6 +131,7 @@ export async function POST(request: NextRequest) {
       await supabase.from("payables").update({ status: "cancelado" }).eq("id", payable.id).eq("company_id", profile.company_id);
       return redirectWith(request, "error");
     }
+    await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "commission", entityId: commission.id, action: "approve", metadata: { payableId: payable.id } });
     return redirectWith(request, "approved");
   }
 
@@ -183,6 +182,7 @@ export async function POST(request: NextRequest) {
         .eq("company_id", profile.company_id);
       return redirectWith(request, "error");
     }
+    await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "commission", entityId: commission.id, action: "pay", metadata: { paidAt, paymentMethod } });
     return redirectWith(request, "paid");
   }
 
@@ -199,5 +199,6 @@ export async function POST(request: NextRequest) {
     .update({ status: "cancelada", updated_by: profile.id, updated_at: new Date().toISOString() })
     .eq("id", commission.id)
     .eq("company_id", profile.company_id);
+  if (!error) await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "commission", entityId: commission.id, action: "cancel" });
   return redirectWith(request, error ? "error" : "canceled");
 }

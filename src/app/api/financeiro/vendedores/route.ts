@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceTypeOptions, type ServiceSegment } from "@/domains/services/catalog";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
 
 function readString(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
@@ -17,19 +17,17 @@ function redirectWith(request: NextRequest, status: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(new URL("/login", request.url), 303);
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id,company_id")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!profile?.company_id) return redirectWith(request, "profile_error");
-
   const formData = await request.formData();
   const action = readString(formData, "action");
+  const permissionAction = action === "create_seller" || action === "save_rule"
+    ? "criar"
+    : action === "delete_rule" ? "excluir" : "editar";
+  const access = await requireCompanyPermission({ module: "financeiro.comissoes", action: permissionAction });
+  if (!access.ok) {
+    if (access.reason === "unauthorized") return NextResponse.redirect(new URL("/login", request.url), 303);
+    return redirectWith(request, access.reason === "forbidden" ? "forbidden" : "profile_error");
+  }
+  const { supabase, profile } = access;
 
   if (action === "create_seller") {
     const name = readString(formData, "name");
@@ -48,7 +46,7 @@ export async function POST(request: NextRequest) {
       if (!linkedProfile) return redirectWith(request, "invalid_profile");
     }
 
-    const { error } = await supabase.from("commission_sellers").insert({
+    const { data: created, error } = await supabase.from("commission_sellers").insert({
       company_id: profile.company_id,
       profile_id: profileId,
       name,
@@ -58,7 +56,8 @@ export async function POST(request: NextRequest) {
       active: true,
       created_by: profile.id,
       updated_by: profile.id
-    });
+    }).select("id").single();
+    if (!error && created) await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "commission_seller", entityId: created.id, action: "create" });
     return redirectWith(request, error ? (error.code === "23505" ? "duplicate_seller" : "error") : "seller_created");
   }
 
@@ -103,6 +102,7 @@ export async function POST(request: NextRequest) {
       })
       .eq("id", sellerId)
       .eq("company_id", profile.company_id);
+    if (!error) await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "commission_seller", entityId: sellerId, action: "update" });
     return redirectWith(request, error ? (error.code === "23505" ? "duplicate_seller" : "error") : "seller_updated");
   }
 
@@ -115,6 +115,7 @@ export async function POST(request: NextRequest) {
       .update({ active, updated_by: profile.id, updated_at: new Date().toISOString() })
       .eq("id", sellerId)
       .eq("company_id", profile.company_id);
+    if (!error) await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "commission_seller", entityId: sellerId, action: "toggle", metadata: { active } });
     return redirectWith(request, error ? "error" : "seller_updated");
   }
 
@@ -217,6 +218,15 @@ export async function POST(request: NextRequest) {
         created_by: profile.id
       }, { onConflict: "company_id,commission_seller_id,source_type,item_key" });
 
+    if (!error) await writeCompanyAudit({
+      companyId: profile.company_id,
+      actorId: profile.id,
+      entity: "seller_commission_rule",
+      entityId: isUpdate ? ruleId : null,
+      action: isUpdate ? "update" : "create",
+      metadata: { sellerId, sourceType, itemKey, ratePercent }
+    });
+
     return redirectWith(
       request,
       error ? (error.code === "23505" ? "duplicate_rule" : "error") : isUpdate ? "rule_updated" : "rule_saved"
@@ -231,6 +241,7 @@ export async function POST(request: NextRequest) {
       .delete()
       .eq("id", ruleId)
       .eq("company_id", profile.company_id);
+    if (!error) await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "seller_commission_rule", entityId: ruleId, action: "delete" });
     return redirectWith(request, error ? "error" : "rule_deleted");
   }
 

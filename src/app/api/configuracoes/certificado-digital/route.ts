@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
 import { parsePfx, PfxValidationError } from "@/lib/certificates/pfx";
 import { encryptCertificateSecret } from "@/lib/certificates/secrets";
-import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -11,31 +12,13 @@ function redirectWith(request: NextRequest, status: string) {
   return NextResponse.redirect(new URL(`/configuracoes/certificado-digital?status=${status}`, request.url), 303);
 }
 
-async function getMasterActor() {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) return { actor: null, error: "unauthorized" };
-
-  const { data: actor } = await supabase
-    .from("profiles")
-    .select("id,company_id,role,active")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (!actor?.company_id || !["master", "system_admin"].includes(actor.role) || actor.active === false) {
-    return { actor: null, error: "forbidden" };
-  }
-
-  return { actor, error: null };
-}
-
 export async function POST(request: NextRequest) {
-  const { actor, error: actorError } = await getMasterActor();
-  if (actorError === "unauthorized") return NextResponse.redirect(new URL("/login", request.url), 303);
-  if (!actor) return redirectWith(request, "forbidden");
+  const access = await requireCompanyPermission({ module: "configuracoes.certificado", action: "configurar", roles: ["master", "system_admin"] });
+  if (!access.ok) {
+    if (access.reason === "unauthorized") return NextResponse.redirect(new URL("/login", request.url), 303);
+    return redirectWith(request, access.reason === "forbidden" ? "forbidden" : "profile_error");
+  }
+  const actor = access.profile;
 
   const formData = await request.formData();
   const password = String(formData.get("password") ?? "");
@@ -89,6 +72,8 @@ export async function POST(request: NextRequest) {
       .eq("company_id", actor.company_id)
       .eq("active", true)
       .neq("id", inserted.id);
+
+    await writeCompanyAudit({ companyId: actor.company_id, actorId: actor.id, entity: "digital_certificate", entityId: inserted.id, action: "activate", metadata: { label: parsed.label, validUntil: parsed.validUntil } });
 
     return redirectWith(request, "saved");
   } catch {

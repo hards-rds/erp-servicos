@@ -61,8 +61,9 @@ test("rota de exclusao exige permissao e limita a empresa ativa", () => {
   const route = readFileSync("src/app/api/financeiro/entradas/route.ts", "utf8");
   const actions = readFileSync("src/components/finance/receive-entry-form.tsx", "utf8");
 
-  assert.match(route, /permission_module: "financeiro\.entradas"/);
-  assert.match(route, /permission_action: "excluir"/);
+  assert.match(route, /requireCompanyPermission/);
+  assert.match(route, /module: "financeiro\.entradas"/);
+  assert.match(route, /action: action === "delete" \? "excluir" : "editar"/);
   assert.match(route, /\.eq\("company_id", profile\.company_id\)/);
   assert.match(route, /\.or\(nfseFilter\)/);
   assert.match(route, /delete_check_error/);

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { isValidCnpj, isValidCpf } from "../src/lib/validations/br-documents.ts";
 import { dueDateForCompetence } from "../src/lib/dates/competence.ts";
-import { generateRecurringEntry } from "../src/domains/contracts/recurrence.ts";
+import { generateRecurringEntry, isRecurringCompetenceDue } from "../src/domains/contracts/recurrence.ts";
 import { summarizeCashflow, assertPayableCanBeMarkedPaid } from "../src/domains/finance/cashflow.ts";
 import { nfseIdempotencyKey, validateNfseDraft } from "../src/domains/fiscal/nfse.ts";
 import { buildDpsXml, interpretNfseResponse, mergeNfseFiscalData, validateDpsInput } from "../src/lib/integrations/nfse-national.ts";
@@ -55,6 +55,22 @@ test("gera entrada recorrente idempotente por contrato, competencia e vencimento
 
   assert.equal(entry.idempotencyKey, "contract:contract-1:competence:2026-07:due:2026-07-10");
   assert.equal(entry.netAmountCents, 350000);
+});
+
+test("respeita inicio, fim e periodicidade das competencias recorrentes", () => {
+  const contract = {
+    startsAt: "2026-02-15",
+    endsAt: "2027-01-31",
+    periodicity: "trimestral" as const,
+    status: "ativo" as const
+  };
+
+  assert.equal(isRecurringCompetenceDue(contract, "2026-01"), false);
+  assert.equal(isRecurringCompetenceDue(contract, "2026-02"), true);
+  assert.equal(isRecurringCompetenceDue(contract, "2026-03"), false);
+  assert.equal(isRecurringCompetenceDue(contract, "2026-05"), true);
+  assert.equal(isRecurringCompetenceDue(contract, "2027-02"), false);
+  assert.equal(isRecurringCompetenceDue({ ...contract, status: "suspenso" }, "2026-05"), false);
 });
 
 test("consolida fluxo de caixa previsto e realizado", () => {

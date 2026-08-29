@@ -28,7 +28,8 @@ const messages: Record<string, { kind: "success" | "error"; text: string }> = {
   invalid: { kind: "error", text: "Preencha as credenciais e o certificado do Banco Inter." },
   forbidden: { kind: "error", text: "Apenas usuarios master podem configurar integracoes bancarias." },
   profile_error: { kind: "error", text: "Seu usuario nao esta vinculado a uma empresa." },
-  save_error: { kind: "error", text: "Nao foi possivel proteger e salvar as credenciais." }
+  save_error: { kind: "error", text: "Nao foi possivel proteger e salvar as credenciais." },
+  plan_feature: { kind: "error", text: "Integracoes com APIs exigem o plano Pro ou Enterprise." }
 };
 
 function summaryValue(row: CredentialRow | undefined, key: string) {

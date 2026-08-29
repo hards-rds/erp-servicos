@@ -21,8 +21,9 @@ test("bloqueia alteracao de saida liquidada ou gerada por outro modulo", () => {
 
 test("rota exige permissao e escopo da empresa ativa", () => {
   const route = readFileSync("src/app/api/financeiro/saidas/route.ts", "utf8");
-  assert.match(route, /permission_module: "financeiro\.saidas"/);
-  assert.match(route, /permission_action: permissionAction/);
+  assert.match(route, /requireCompanyPermission/);
+  assert.match(route, /module: "financeiro\.saidas"/);
+  assert.match(route, /action: permissionAction/);
   assert.match(route, /\.eq\("company_id", profile\.company_id\)/);
   assert.match(route, /status: "pago"/);
   assert.match(route, /paid_at: paidAt/);

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { writeCompanyAudit } from "@/lib/auth/api-access";
 import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -77,6 +78,14 @@ export async function POST(request: NextRequest) {
   if (error) {
     return redirectTo(request, "/admin/tenants", "error");
   }
+
+  await writeCompanyAudit({
+    companyId: company.id,
+    actorId: user.id,
+    entity: "company_context",
+    entityId: company.id,
+    action: "switch"
+  });
 
   return redirectTo(request, redirectPath, "switched");
 }

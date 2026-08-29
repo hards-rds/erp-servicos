@@ -6,7 +6,7 @@ function value(formData: FormData, key: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const context = await getSchoolContext();
+  const context = await getSchoolContext("editar");
   if (!context.user) return NextResponse.redirect(new URL("/login", request.url), 303);
   const target = new URL("/escola/presencas", request.url);
   if (!context.allowed || !context.profile?.company_id) {

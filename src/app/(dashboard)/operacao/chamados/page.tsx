@@ -44,6 +44,7 @@ const messages: Record<string, { kind: "success" | "error"; text: string }> = {
   period_invalid: { kind: "error", text: "Escolha um periodo valido de ate 90 dias." },
   profile_error: { kind: "error", text: "Seu usuario nao esta ativo ou vinculado a uma empresa." },
   segment_error: { kind: "error", text: "Chamados da PlanetChat estao disponiveis somente para tenants de Tecnologia." },
+  plan_feature: { kind: "error", text: "Sincronizacoes com APIs exigem o plano Pro ou Enterprise." },
   linked: { kind: "success", text: "Chamado vinculado ao cliente e contrato selecionados." },
   link_invalid: { kind: "error", text: "Cliente ou contrato invalido para o tenant ativo." },
   link_error: { kind: "error", text: "Nao foi possivel atualizar o vinculo do chamado." }

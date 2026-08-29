@@ -145,6 +145,8 @@ export default async function TenantsPage({
                       <td>
                         {(tenant.companies || []).length ? (
                           <RowActionsMenu label={`Acoes do tenant ${tenant.name}`}>
+                            <a className="ghost-button button-link compact-button" href={`/admin/pilotos/${tenant.id}`}>Piloto controlado</a>
+                            <a className="ghost-button button-link compact-button" href={`/admin/tenants/${tenant.id}/assinatura`}>Gerenciar assinatura</a>
                             {(tenant.companies || []).map((company) => (
                               <div className="tenant-company-actions" key={company.id}>
                                 {company.service_segment === "otica" ? <a className="ghost-button button-link compact-button" href={`/admin/importacao-optica?companyId=${company.id}`}>Importar pacientes</a> : null}

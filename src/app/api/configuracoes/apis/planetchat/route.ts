@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
 import { testPlanetChatConnection } from "@/lib/integrations/planetchat-client";
 import {
   decryptPlanetChatCredentials,
   encryptPlanetChatCredentials
 } from "@/lib/integrations/planetchat-credentials";
-import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
+import { tenantHasFeature } from "@/server/services/saas-plan-service";
 
 export const runtime = "nodejs";
 
@@ -13,22 +15,14 @@ function redirectWith(request: NextRequest, status: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(new URL("/login", request.url), 303);
-
-  const { data: profile } = await supabase.from("profiles")
-    .select("company_id,role,active")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!profile?.company_id || profile.active === false) return redirectWith(request, "profile_error");
-  if (!["master", "system_admin"].includes(profile.role)) return redirectWith(request, "forbidden");
-
-  const { data: company } = await supabase.from("companies")
-    .select("service_segment")
-    .eq("id", profile.company_id)
-    .maybeSingle();
-  if (company?.service_segment !== "tecnologia") return redirectWith(request, "segment_error");
+  const access = await requireCompanyPermission({ module: "configuracoes.apis", action: "configurar", segment: "tecnologia", roles: ["master", "system_admin"] });
+  if (!access.ok) {
+    if (access.reason === "unauthorized") return NextResponse.redirect(new URL("/login", request.url), 303);
+    if (access.reason === "segment") return redirectWith(request, "segment_error");
+    return redirectWith(request, access.reason === "forbidden" ? "forbidden" : "profile_error");
+  }
+  const { profile } = access;
+  if (!(await tenantHasFeature(profile.tenant_id, "api_integrations"))) return redirectWith(request, "plan_feature");
 
   const formData = await request.formData();
   const tokenInput = String(formData.get("token") || "").trim();
@@ -85,6 +79,8 @@ export async function POST(request: NextRequest) {
     last_test_status: "conectado",
     updated_at: new Date().toISOString()
   }, { onConflict: "company_id,provider,environment" });
+
+  if (!error) await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "api_credential", action: "configure_planetchat", metadata: { active, defaultSyncDays } });
 
   return redirectWith(request, error ? "save_error" : active ? "saved" : "saved_inactive");
 }

@@ -24,7 +24,9 @@ const tenantPages = [
   "src/app/(dashboard)/fiscal/notas-emitidas/page.tsx",
   "src/app/(dashboard)/operacao/estoque/page.tsx",
   "src/app/(dashboard)/operacao/chamados/page.tsx",
-  "src/app/(dashboard)/operacao/vendas/page.tsx"
+  "src/app/(dashboard)/operacao/vendas/page.tsx",
+  "src/app/(dashboard)/configuracoes/automacoes/page.tsx",
+  "src/app/(dashboard)/notificacoes/page.tsx"
 ];
 
 test("paginas operacionais filtram explicitamente a empresa ativa", () => {
@@ -120,8 +122,9 @@ test("operacoes do Inter derivam cobranca e entrada da empresa ativa", () => {
   assert.match(webhook, /loadActiveInterCredentials\(charge\.company_id\)/);
 });
 
-test("contratos permitem financeiro, emissao fiscal e cobranca independentes", () => {
+test("contratos geram financeiro antes da fila fiscal e mantem cobranca separada", () => {
   const route = readFileSync("src/app/api/cadastros/contratos/route.ts", "utf8");
+  const flow = readFileSync("src/server/services/contract-recurring-flow.ts", "utf8");
   const page = readFileSync("src/app/(dashboard)/cadastros/contratos/page.tsx", "utf8");
   const emission = readFileSync("src/app/api/fiscal/nfse/emitir/route.ts", "utf8");
 
@@ -132,13 +135,33 @@ test("contratos permitem financeiro, emissao fiscal e cobranca independentes", (
   assert.match(page, /Gerar financeiro/);
   assert.match(page, /Emitir NFS-e/);
   assert.match(page, /Emitir boleto/);
-  assert.match(route, /const documentId = await ensureContractNfse\(input, fiscalData\)/);
-  assert.doesNotMatch(route, /ensureContractNfse\(input, entry\)/);
+  assert.match(route, /const entry = await ensureContractEntry\(input, competence\)/);
+  assert.match(route, /const documentId = await ensureContractNfse\(input, entry, fiscalData\)/);
   assert.match(emission, /ensureAuthorizedFinancialEntry/);
   assert.match(emission, /result\.status === "autorizada"/);
   assert.match(emission, /nfse_document_id: document\.id/);
-  assert.match(route, /financial_entry_id: financialEntry\?\.id \|\| null/);
-  assert.match(route, /linkContractEntryToNfse/);
+  assert.match(flow, /financial_entry_id: entry\.entryId/);
+  assert.match(flow, /nfse_document_id: documentId/);
+});
+
+test("automacoes recorrentes sao idempotentes e isoladas por empresa", () => {
+  const migration = readFileSync("supabase/migrations/20260829140000_recurring_automation.sql", "utf8");
+  const automation = readFileSync("src/server/services/recurrence-automation-service.ts", "utf8");
+  const cron = readFileSync("src/app/api/cron/recorrencias/route.ts", "utf8");
+  const vercel = readFileSync("vercel.json", "utf8");
+
+  assert.match(migration, /unique \(company_id, source_type, source_id, competence\)/);
+  assert.match(migration, /using \(public\.company_match\(company_id\)\)/);
+  assert.doesNotMatch(migration, /app_is_system_admin\(\) or public\.company_match/);
+  assert.match(automation, /target_company_id: companyId/);
+  assert.match(automation, /target_competence: competence/);
+  assert.match(automation, /ensureContractEntry\(input, competence\)/);
+  assert.match(automation, /loadDueRows\("financial_entries"/);
+  assert.match(automation, /loadDueRows\("payables"/);
+  assert.match(automation, /\.eq\("company_id", entry\.company_id\)/);
+  assert.doesNotMatch(automation, /emitirNfse|sendNfse|processNfse/);
+  assert.match(cron, /process\.env\.CRON_SECRET/);
+  assert.match(vercel, /\/api\/cron\/recorrencias/);
 });
 
 test("fila fiscal exige conferencia e protege notas autorizadas na limpeza", () => {

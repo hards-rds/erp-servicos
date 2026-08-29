@@ -16,6 +16,7 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   catalog_invalid: { kind: "error", text: "Revise nome, tipo e preco do servico." },
   catalog_duplicate: { kind: "error", text: "Ja existe um servico com este codigo." },
   catalog_error: { kind: "error", text: "Nao foi possivel salvar o servico no catalogo." },
+  plan_limit: { kind: "error", text: "O limite de produtos e servicos do plano foi atingido. Consulte Assinatura e plano." },
   fiscal_invalid: { kind: "error", text: "Revise o codigo nacional do servico e o NBS." },
   created: { kind: "success", text: "Atendimento cadastrado com sucesso." },
   updated: { kind: "success", text: "Atendimento atualizado com sucesso." },

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
+import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
+import { createServiceClient } from "@/lib/supabase/server";
 import { generateAndAttachDanfsePdf } from "@/lib/fiscal/danfse";
 import { logFiscalEmail, sendFiscalDocumentEmail } from "@/lib/email/fiscal-email";
 
@@ -13,26 +14,17 @@ function redirectWith(request: NextRequest, status: string, message: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) return NextResponse.redirect(new URL("/login", request.url), 303);
+  const access = await requireCompanyPermission({ module: "fiscal.notas", action: "emitir" });
+  if (!access.ok) {
+    if (access.reason === "unauthorized") return NextResponse.redirect(new URL("/login", request.url), 303);
+    return redirectWith(request, "forbidden", "Voce nao possui permissao para enviar documentos fiscais.");
+  }
+  const { profile } = access;
 
   const formData = await request.formData();
   const documentId = String(formData.get("nfseDocumentId") || "").trim();
 
   try {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("id,company_id,active")
-      .eq("id", user.id)
-      .maybeSingle();
-    if (!profile?.company_id || profile.active === false) {
-      return redirectWith(request, "profile_error", "Seu usuario nao esta ativo ou vinculado a uma empresa.");
-    }
-
     const service = createServiceClient();
     const { data: document } = await service
       .from("nfse_documents")
@@ -73,6 +65,8 @@ export async function POST(request: NextRequest) {
       result,
       metadata: { nfseDocumentId: document.id }
     });
+
+    if (result.ok) await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "nfse_document", entityId: document.id, action: "send_email", metadata: { recipient } });
 
     return redirectWith(
       request,

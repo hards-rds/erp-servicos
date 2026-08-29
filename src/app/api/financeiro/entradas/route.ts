@@ -4,8 +4,8 @@ import {
   isProtectedInterChargeForEntryDeletion,
   isProtectedNfseForEntryDeletion
 } from "@/domains/finance/entry-deletion";
+import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
 import { findAuthorizedNfseXml } from "@/lib/fiscal/nfse-xml";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 function readString(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
@@ -22,35 +22,21 @@ function redirectWith(request: NextRequest, status: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.redirect(new URL("/login", request.url), 303);
-  }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id,company_id,active")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (!profile?.company_id || profile.active === false) return redirectWith(request, "profile_error");
-
   const formData = await request.formData();
   const action = readString(formData, "action");
   const entryId = readString(formData, "entryId");
+  const access = await requireCompanyPermission({
+    module: "financeiro.entradas",
+    action: action === "delete" ? "excluir" : "editar"
+  });
+  if (!access.ok) {
+    if (access.reason === "unauthorized") return NextResponse.redirect(new URL("/login", request.url), 303);
+    return redirectWith(request, access.reason === "forbidden" ? "forbidden" : "profile_error");
+  }
+  const { supabase, profile } = access;
 
   if (action === "delete") {
     if (!entryId) return redirectWith(request, "delete_invalid");
-
-    const { data: canDelete } = await supabase.rpc("app_has_permission", {
-      permission_module: "financeiro.entradas",
-      permission_action: "excluir"
-    });
-    if (!canDelete) return redirectWith(request, "delete_forbidden");
 
     const { data: entry } = await supabase
       .from("financial_entries")
@@ -186,6 +172,13 @@ export async function POST(request: NextRequest) {
         .eq("company_id", profile.company_id)
         .in("id", removableDocumentIds);
     }
+    await writeCompanyAudit({
+      companyId: profile.company_id,
+      actorId: profile.id,
+      entity: "financial_entry",
+      entityId: entry.id,
+      action: "delete"
+    });
     return redirectWith(request, "deleted");
   }
 
@@ -233,6 +226,15 @@ export async function POST(request: NextRequest) {
     })
     .eq("financial_entry_id", entry.id)
     .eq("company_id", profile.company_id);
+
+  await writeCompanyAudit({
+    companyId: profile.company_id,
+    actorId: profile.id,
+    entity: "financial_entry",
+    entityId: entry.id,
+    action: "receive",
+    metadata: { receivedAt, paymentMethod, receivedAmount }
+  });
 
   return redirectWith(request, "received");
 }

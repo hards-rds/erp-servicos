@@ -10,13 +10,14 @@ function redirectWith(request: NextRequest, status: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const context = await getSchoolContext();
+  const formData = await request.formData();
+  const action = value(formData, "action") || "create";
+  const permissionAction = action === "delete" ? "excluir" : action === "update" ? "editar" : "criar";
+  const context = await getSchoolContext(permissionAction);
   if (!context.user) return NextResponse.redirect(new URL("/login", request.url), 303);
   if (!context.allowed || !context.profile?.company_id) return redirectWith(request, "forbidden");
 
   const { supabase, profile } = context;
-  const formData = await request.formData();
-  const action = value(formData, "action") || "create";
   const classId = value(formData, "classId");
 
   if (action === "delete") {

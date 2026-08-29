@@ -1,22 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireCompanyPermission } from "@/lib/auth/api-access";
 import { findAuthorizedNfseXml } from "@/lib/fiscal/nfse-xml";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(new URL("/login", request.url), 303);
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("company_id,active")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!profile?.company_id || profile.active === false) {
-    return NextResponse.json({ error: "Usuario sem empresa ativa." }, { status: 403 });
-  }
+  const access = await requireCompanyPermission({ module: "fiscal.notas", action: "visualizar" });
+  if (!access.ok) return NextResponse.json({ error: access.reason === "unauthorized" ? "Nao autenticado." : "Acesso negado." }, { status: access.reason === "unauthorized" ? 401 : 403 });
+  const { supabase, profile } = access;
 
   const documentId = request.nextUrl.searchParams.get("id") || "";
   const { data: document } = await supabase
@@ -42,4 +33,3 @@ export async function GET(request: NextRequest) {
     }
   });
 }
-

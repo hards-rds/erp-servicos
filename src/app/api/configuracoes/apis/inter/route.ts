@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { classifyInterConnectionError } from "@/domains/billing/inter";
+import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
 import { configureInterWebhook, testInterConnection } from "@/lib/integrations/inter-client";
 import {
   decryptInterCredentials,
@@ -7,7 +8,8 @@ import {
   type InterEnvironment,
   type InterRuntimeCredentials
 } from "@/lib/integrations/inter-credentials";
-import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
+import { tenantHasFeature } from "@/server/services/saas-plan-service";
 
 export const runtime = "nodejs";
 
@@ -26,17 +28,13 @@ function redirectWith(request: NextRequest, status: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(new URL("/login", request.url), 303);
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id,company_id,role,active")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!profile?.company_id) return redirectWith(request, "profile_error");
-  if (!profile.active || !["master", "system_admin"].includes(profile.role)) return redirectWith(request, "forbidden");
+  const access = await requireCompanyPermission({ module: "configuracoes.apis", action: "configurar", roles: ["master", "system_admin"] });
+  if (!access.ok) {
+    if (access.reason === "unauthorized") return NextResponse.redirect(new URL("/login", request.url), 303);
+    return redirectWith(request, access.reason === "forbidden" ? "forbidden" : "profile_error");
+  }
+  const { profile } = access;
+  if (!(await tenantHasFeature(profile.tenant_id, "api_integrations"))) return redirectWith(request, "plan_feature");
 
   const formData = await request.formData();
   const environment = readString(formData, "environment") as InterEnvironment;
@@ -196,6 +194,8 @@ export async function POST(request: NextRequest) {
     });
     if (activateError) return redirectWith(request, "save_error");
   }
+
+  await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "api_credential", action: "configure_inter", metadata: { environment, active, realChargesEnabled } });
 
   return redirectWith(request, active ? "saved" : "saved_inactive");
 }

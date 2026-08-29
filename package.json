@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "release:check": "pnpm typecheck && pnpm test && pnpm lint && pnpm build",
     "bootstrap:master": "node scripts/bootstrap-master.mjs"
   },
   "dependencies": {

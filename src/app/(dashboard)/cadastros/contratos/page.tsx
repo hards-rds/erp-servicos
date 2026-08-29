@@ -16,6 +16,9 @@ type ContractRow = {
   due_day: number;
   starts_at: string;
   status: string;
+  auto_generate_financial: boolean;
+  auto_issue_nfse: boolean;
+  auto_generate_charge: boolean;
   fiscal_service_data: Record<string, unknown> | null;
   notes: string | null;
   clients: { legal_name: string } | { legal_name: string }[] | null;
@@ -28,6 +31,8 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   charge_issued: { kind: "success", text: "Cobranca enviada ao Banco Inter para processamento." },
   charge_error: { kind: "error", text: "O Banco Inter nao processou a cobranca. Consulte Boletos/Cobrancas." },
   inter_inactive: { kind: "error", text: "Banco Inter inativo. A emissao fiscal continua disponivel normalmente." },
+  plan_limit: { kind: "error", text: "O limite de contratos e matriculas do plano foi atingido. Consulte Assinatura e plano." },
+  feature_unavailable: { kind: "error", text: "Este recurso exige o plano Pro ou Enterprise. Consulte Assinatura e plano." },
   generate_error: { kind: "error", text: "Nao foi possivel preparar o lancamento desta competencia." },
   inactive: { kind: "error", text: "Somente contratos ativos geram fluxo recorrente." },
   fiscal_invalid: {
@@ -85,7 +90,7 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
     ? await Promise.all([
       supabase
         .from("contracts")
-        .select("id,client_id,service_description,recurring_amount,periodicity,due_day,starts_at,status,fiscal_service_data,notes,clients(legal_name)")
+        .select("id,client_id,service_description,recurring_amount,periodicity,due_day,starts_at,status,auto_generate_financial,auto_issue_nfse,auto_generate_charge,fiscal_service_data,notes,clients(legal_name)")
         .eq("company_id", profile.company_id)
         .order("created_at", { ascending: false })
         .limit(50),
@@ -122,6 +127,7 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
                   <th>Valor</th>
                   <th>Vencimento</th>
                   <th>Status</th>
+                  <th>Automacao</th>
                   <th>Acoes</th>
                 </tr>
               </thead>
@@ -134,6 +140,11 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
                       <td>{formatMoney(contract.recurring_amount)}</td>
                       <td>Dia {contract.due_day}</td>
                       <td><StatusBadge tone={contract.status === "ativo" ? "success" : "neutral"}>{contract.status}</StatusBadge></td>
+                      <td>{[
+                        contract.auto_generate_financial ? "Financeiro" : "",
+                        contract.auto_issue_nfse ? "NFS-e" : "",
+                        contract.auto_generate_charge ? "Boleto" : ""
+                      ].filter(Boolean).join(" · ") || "Manual"}</td>
                       <td>
                         <RowActionsMenu label={`Acoes do contrato de ${getClientName(contract)}`}>
                           <a
@@ -170,7 +181,7 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={6}>Nenhum contrato cadastrado.</td>
+                    <td colSpan={7}>Nenhum contrato cadastrado.</td>
                   </tr>
                 )}
               </tbody>

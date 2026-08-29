@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
 
 function readString(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
@@ -24,24 +24,12 @@ function readEye(formData: FormData, prefix: "right" | "left") {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.redirect(new URL("/login", request.url), 303);
+  const access = await requireCompanyPermission({ module: "cadastros.clientes", action: "editar", segment: "otica" });
+  if (!access.ok) {
+    if (access.reason === "unauthorized") return NextResponse.redirect(new URL("/login", request.url), 303);
+    return redirectWith(request, access.reason === "forbidden" ? "forbidden" : "profile_error");
   }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id,company_id")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (!profile?.company_id) {
-    return redirectWith(request, "profile_error");
-  }
+  const { supabase, profile } = access;
 
   const formData = await request.formData();
   const clientId = readString(formData, "clientId");
@@ -62,7 +50,7 @@ export async function POST(request: NextRequest) {
     return redirectWith(request, "optical_invalid");
   }
 
-  const { error } = await supabase.from("client_optical_records").insert({
+  const { data: created, error } = await supabase.from("client_optical_records").insert({
     company_id: profile.company_id,
     client_id: client.id,
     exam_date: examDate,
@@ -79,7 +67,9 @@ export async function POST(request: NextRequest) {
     },
     notes: emptyToNull(readString(formData, "notes")),
     created_by: profile.id
-  });
+  }).select("id").single();
+
+  if (!error && created) await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "client_optical_record", entityId: created.id, action: "create", metadata: { clientId: client.id, examDate } });
 
   return redirectWith(request, error ? "optical_error" : "optical_created");
 }

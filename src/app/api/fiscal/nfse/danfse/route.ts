@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
+import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
+import { createServiceClient } from "@/lib/supabase/server";
 import { generateAndAttachDanfsePdf } from "@/lib/fiscal/danfse";
 import { downloadPrivateFile, type StoredFile } from "@/lib/files/app-files";
 
@@ -13,20 +14,9 @@ function redirectWith(request: NextRequest, status: string, message: string) {
 }
 
 async function requireDocumentAccess(documentId: string) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) return { error: "unauthenticated" as const };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id,company_id,active")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (!profile?.company_id || profile.active === false) return { error: "profile" as const };
+  const access = await requireCompanyPermission({ module: "fiscal.notas", action: "visualizar" });
+  if (!access.ok) return { error: access.reason === "unauthorized" ? "unauthenticated" as const : "forbidden" as const };
+  const { supabase, profile } = access;
 
   const { data: document } = await supabase
     .from("nfse_documents")
@@ -94,6 +84,7 @@ export async function POST(request: NextRequest) {
 
   try {
     await generateAndAttachDanfsePdf(access.document.id, access.profile.id);
+    await writeCompanyAudit({ companyId: access.profile.company_id, actorId: access.profile.id, entity: "nfse_document", entityId: access.document.id, action: "generate_danfse" });
     return redirectWith(request, "pdf_generated", "DANFSe gerado e anexado a nota.");
   } catch (error) {
     return redirectWith(

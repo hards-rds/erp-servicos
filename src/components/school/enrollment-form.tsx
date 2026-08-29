@@ -4,7 +4,7 @@ import { useState } from "react";
 
 type AthleteOption = { id: string; full_name: string; category: string | null };
 type ClassOption = { id: string; name: string; category: string; default_monthly_fee: number };
-export type EnrollmentValue = { id?: string; athlete_id?: string; class_id?: string; starts_at?: string; ends_at?: string | null; due_day?: number; monthly_amount?: number; discount_amount?: number; status?: string; notes?: string | null };
+export type EnrollmentValue = { id?: string; athlete_id?: string; class_id?: string; starts_at?: string; ends_at?: string | null; due_day?: number; monthly_amount?: number; discount_amount?: number; status?: string; auto_generate_financial?: boolean; notes?: string | null };
 
 export function EnrollmentForm({ athletes, classes, enrollment }: { athletes: AthleteOption[]; classes: ClassOption[]; enrollment?: EnrollmentValue }) {
   const initialClass = classes.find((item) => item.id === enrollment?.class_id);
@@ -22,6 +22,7 @@ export function EnrollmentForm({ athletes, classes, enrollment }: { athletes: At
     <div className="form-grid"><label>Inicio<input name="startsAt" type="date" defaultValue={enrollment?.starts_at || new Date().toISOString().slice(0, 10)} required /></label><label>Termino<input name="endsAt" type="date" defaultValue={enrollment?.ends_at || ""} /></label></div>
     <div className="form-grid"><label>Mensalidade<input name="monthlyAmount" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} required /></label><label>Desconto<input name="discountAmount" inputMode="decimal" defaultValue={Number(enrollment?.discount_amount || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })} required /></label></div>
     <div className="form-grid"><label>Dia de vencimento<input name="dueDay" type="number" min="1" max="31" defaultValue={enrollment?.due_day || 10} required /></label><label>Status<select name="status" defaultValue={enrollment?.status || "ativa"}><option value="pendente">Pendente</option><option value="ativa">Ativa</option><option value="suspensa">Suspensa</option><option value="encerrada">Encerrada</option></select></label></div>
+    <label className="checkbox-row"><input name="autoGenerateFinancial" type="checkbox" defaultChecked={enrollment?.auto_generate_financial === true} /><span>Gerar mensalidade automaticamente em cada competencia</span></label>
     <label>Observacoes<textarea name="notes" defaultValue={enrollment?.notes || ""} /></label>
     <button className="primary-button" type="submit">{enrollment?.id ? "Salvar alteracoes" : "Criar matricula"}</button>
   </form>;

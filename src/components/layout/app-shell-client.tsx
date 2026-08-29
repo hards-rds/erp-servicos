@@ -5,10 +5,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
+  Activity,
   BadgeCheck,
   Banknote,
   BarChart3,
   Barcode,
+  Bell,
   Building2,
   Building,
   ChartNoAxesCombined,
@@ -16,11 +18,14 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  CreditCard,
   FilePlus2,
+  FileUp,
   FileText,
   GraduationCap,
   HandCoins,
   LayoutDashboard,
+  ListChecks,
   LogOut,
   Mail,
   Menu,
@@ -100,6 +105,10 @@ const nav = [
   {
     title: "Configuracoes",
     items: [
+      { href: "/configuracoes/onboarding", label: "Primeiros passos", icon: ListChecks },
+      { href: "/configuracoes/importacoes", label: "Importacoes", icon: FileUp },
+      { href: "/configuracoes/assinatura", label: "Assinatura e plano", icon: CreditCard },
+      { href: "/configuracoes/automacoes", label: "Automacoes", icon: CalendarCheck2, hiddenForSegments: ["otica"] },
       { href: "/configuracoes/certificado-digital", label: "Certificado Digital", icon: BadgeCheck },
       { href: "/configuracoes/usuarios", label: "Usuarios", icon: Users },
       { href: "/configuracoes/grupos-de-acesso", label: "Grupos de Acesso", icon: UserRoundCog },
@@ -118,6 +127,7 @@ type AppShellClientProps = {
   activeCompanyName?: string | null;
   activeCompanySegment?: string | null;
   isSystemAdmin?: boolean;
+  unreadNotifications?: number;
 };
 
 const segmentLabels: Record<string, string> = {
@@ -134,7 +144,8 @@ export function AppShellClient({
   displayRole,
   activeCompanyName,
   activeCompanySegment,
-  isSystemAdmin = false
+  isSystemAdmin = false,
+  unreadNotifications = 0
 }: AppShellClientProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -154,7 +165,11 @@ export function AppShellClient({
     ? [
       {
         title: "Admin",
-        items: [{ href: "/admin/tenants", label: "Tenants", icon: Building }]
+        items: [
+          { href: "/admin/tenants", label: "Tenants", icon: Building },
+          { href: "/admin/pilotos", label: "Pilotos", icon: ListChecks },
+          { href: "/admin/saude", label: "Saude do sistema", icon: Activity }
+        ]
       },
       ...segmentNav
     ]
@@ -302,6 +317,15 @@ export function AppShellClient({
                 <small>{displayEmail} · {displayRole}</small>
               </span>
             </div>
+            <Link
+              className="icon-button notification-button"
+              href="/notificacoes"
+              title={unreadNotifications ? `${unreadNotifications} notificacoes nao lidas` : "Notificacoes"}
+              aria-label={unreadNotifications ? `${unreadNotifications} notificacoes nao lidas` : "Notificacoes"}
+            >
+              <Bell aria-hidden="true" />
+              {unreadNotifications ? <span className="notification-count">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span> : null}
+            </Link>
             <button
               className="icon-button theme-toggle"
               type="button"

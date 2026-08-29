@@ -1,7 +1,7 @@
 import { requestNfseEmission, requestNfseNationalEmission } from "@/lib/integrations/nfse-client";
+import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
 import { mergeNfseFiscalData } from "@/lib/integrations/nfse-national";
 import { loadRuntimeCertificate } from "@/lib/certificates/runtime-certificate";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { generateAndAttachDanfsePdf } from "@/lib/fiscal/danfse";
 import { logFiscalEmail, sendFiscalDocumentEmail } from "@/lib/email/fiscal-email";
 import { dueDateForCompetence } from "@/lib/dates/competence";
@@ -27,7 +27,7 @@ function row(value: unknown): Row {
 }
 
 async function ensureAuthorizedFinancialEntry(input: {
-  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>;
+  supabase: Awaited<ReturnType<typeof import("@/lib/supabase/server").createServerSupabaseClient>>;
   companyId: string;
   profileId: string;
   documentId: string;
@@ -83,14 +83,19 @@ async function ensureAuthorizedFinancialEntry(input: {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.redirect(new URL("/login", request.url), 303);
+  const access = await requireCompanyPermission({ module: "fiscal.nfse", action: "emitir" });
+  if (!access.ok) {
+    const isForm = (request.headers.get("content-type") || "").includes("form");
+    if (access.reason === "unauthorized") {
+      return isForm
+        ? NextResponse.redirect(new URL("/login", request.url), 303)
+        : NextResponse.json({ error: "Nao autenticado." }, { status: 401 });
+    }
+    return isForm
+      ? redirectWith(request, access.reason === "forbidden" ? "forbidden" : "profile_error")
+      : NextResponse.json({ error: "Acesso negado." }, { status: 403 });
   }
+  const { supabase, profile } = access;
 
   try {
     const contentType = request.headers.get("content-type") || "";
@@ -110,14 +115,6 @@ export async function POST(request: NextRequest) {
     ) {
       return redirectWithMessage(request, "rejected", "Confirme explicitamente a emissao real em producao.");
     }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("id,company_id")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (!profile?.company_id) return redirectWith(request, "profile_error");
 
     const { data: document } = await supabase
       .from("nfse_documents")
@@ -268,6 +265,15 @@ export async function POST(request: NextRequest) {
         });
       }
     }
+
+    await writeCompanyAudit({
+      companyId: profile.company_id,
+      actorId: profile.id,
+      entity: "nfse_document",
+      entityId: document.id,
+      action: "emit",
+      metadata: { status: result.status, provider: result.provider }
+    });
 
     return redirectWithMessage(
       request,

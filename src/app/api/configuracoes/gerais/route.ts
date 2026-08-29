@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
+import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
+import { createServiceClient } from "@/lib/supabase/server";
 import { onlyDigits } from "@/lib/validations/br-documents";
 
 const segments = new Set(["tecnologia", "otica", "escola_futebol", "generico"]);
@@ -17,28 +18,12 @@ function readPercentage(formData: FormData, key: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.redirect(new URL("/login", request.url), 303);
+  const access = await requireCompanyPermission({ module: "configuracoes.gerais", action: "configurar", roles: ["master", "system_admin"] });
+  if (!access.ok) {
+    if (access.reason === "unauthorized") return NextResponse.redirect(new URL("/login", request.url), 303);
+    return NextResponse.redirect(new URL(`/configuracoes/gerais?status=${access.reason === "forbidden" ? "forbidden" : "profile_error"}`, request.url), 303);
   }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("company_id,role,active")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (!profile?.company_id) {
-    return NextResponse.redirect(new URL("/configuracoes/gerais?status=profile_error", request.url), 303);
-  }
-
-  if (!["master", "system_admin"].includes(profile.role) || profile.active === false) {
-    return NextResponse.redirect(new URL("/configuracoes/gerais?status=forbidden", request.url), 303);
-  }
+  const { profile } = access;
 
   const formData = await request.formData();
   const name = readString(formData, "name");
@@ -90,6 +75,8 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString()
     })
     .eq("id", profile.company_id);
+
+  if (!error) await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "company", entityId: profile.company_id, action: "configure", metadata: { serviceSegment, cityCode } });
 
   return NextResponse.redirect(new URL(`/configuracoes/gerais?status=${error ? "error" : "saved"}`, request.url), 303);
 }

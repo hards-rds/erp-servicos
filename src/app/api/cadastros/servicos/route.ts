@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceDeletionBlock } from "@/domains/services/deletion";
-import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
+import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
 import { resolveSellerCommissionRate, syncSourceCommission } from "@/server/services/comissoes-service";
 
 function readString(formData: FormData, key: string) {
@@ -72,57 +72,8 @@ function hasValidFiscalCodes(fiscalData: ReturnType<typeof collectFiscalServiceD
   return !fiscalData.nbsCode || /^\d{9}$/.test(fiscalData.nbsCode);
 }
 
-async function getActiveContext(input: {
-  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>;
-  userId: string;
-}) {
-  const { data: profile } = await input.supabase
-    .from("profiles")
-    .select("id,company_id")
-    .eq("id", input.userId)
-    .maybeSingle();
-
-  if (!profile?.id) return null;
-
-  let companyId = profile.company_id as string | null;
-
-  if (!companyId) {
-    const service = createServiceClient();
-    const { data: membership } = await service
-      .from("company_members")
-      .select("company_id")
-      .eq("user_id", profile.id)
-      .eq("active", true)
-      .limit(1)
-      .maybeSingle();
-
-    companyId = membership?.company_id || null;
-
-    if (companyId) {
-      await service
-        .from("profiles")
-        .update({ company_id: companyId, updated_at: new Date().toISOString() })
-        .eq("id", profile.id);
-    }
-  }
-
-  if (!companyId) return { profileId: profile.id, companyId: null, segment: "tecnologia" };
-
-  const { data: company } = await input.supabase
-    .from("companies")
-    .select("service_segment")
-    .eq("id", companyId)
-    .maybeSingle();
-
-  return {
-    profileId: profile.id,
-    companyId,
-    segment: company?.service_segment || "tecnologia"
-  };
-}
-
 async function syncReceivableFromService(input: {
-  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>;
+  supabase: Awaited<ReturnType<typeof import("@/lib/supabase/server").createServerSupabaseClient>>;
   companyId: string;
   serviceId: string;
   profileId: string;
@@ -179,23 +130,16 @@ async function syncReceivableFromService(input: {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.redirect(new URL("/login", request.url), 303);
-  }
-
-  const context = await getActiveContext({ supabase, userId: user.id });
-
-  if (!context?.companyId) {
-    return NextResponse.redirect(new URL("/cadastros/servicos?view=atendimentos&status=profile_error", request.url), 303);
-  }
-
   const formData = await request.formData();
   const action = readString(formData, "action") || "create";
+  const permissionAction = action === "delete" ? "excluir" : action === "update" ? "editar" : "criar";
+  const access = await requireCompanyPermission({ module: "cadastros.servicos", action: permissionAction });
+  if (!access.ok) {
+    if (access.reason === "unauthorized") return NextResponse.redirect(new URL("/login", request.url), 303);
+    return NextResponse.redirect(new URL(`/cadastros/servicos?view=atendimentos&status=${access.reason === "forbidden" ? "forbidden" : "profile_error"}`, request.url), 303);
+  }
+  const { supabase, profile, company } = access;
+  const context = { profileId: profile.id, companyId: profile.company_id, segment: company.service_segment };
   const segment = context.segment;
   const serviceId = readString(formData, "serviceId");
   const clientId = readString(formData, "clientId");
@@ -245,6 +189,7 @@ export async function POST(request: NextRequest) {
       .eq("id", serviceId)
       .eq("company_id", context.companyId);
 
+    if (!error) await writeCompanyAudit({ companyId: context.companyId, actorId: context.profileId, entity: "service_record", entityId: serviceId, action: "delete" });
     return NextResponse.redirect(
       new URL(`/cadastros/servicos?view=atendimentos&status=${error ? "delete_error" : "deleted"}`, request.url),
       303
@@ -325,6 +270,7 @@ export async function POST(request: NextRequest) {
       if (commissionResult.error) {
         return NextResponse.redirect(new URL("/cadastros/servicos?view=atendimentos&status=commission_error", request.url), 303);
       }
+      await writeCompanyAudit({ companyId: context.companyId, actorId: context.profileId, entity: "service_record", entityId: serviceId, action: "update", metadata: { status: payload.status, amount: payload.amount } });
     }
 
     return NextResponse.redirect(new URL(`/cadastros/servicos?view=atendimentos&status=${error ? "update_error" : "updated"}`, request.url), 303);
@@ -361,6 +307,7 @@ export async function POST(request: NextRequest) {
     if (commissionResult.error) {
       return NextResponse.redirect(new URL("/cadastros/servicos?view=atendimentos&status=commission_error", request.url), 303);
     }
+    await writeCompanyAudit({ companyId: context.companyId, actorId: context.profileId, entity: "service_record", entityId: createdService.id, action: "create", metadata: { status: payload.status, amount: payload.amount } });
   }
 
   return NextResponse.redirect(new URL(`/cadastros/servicos?view=atendimentos&status=${error ? "error" : "created"}`, request.url), 303);

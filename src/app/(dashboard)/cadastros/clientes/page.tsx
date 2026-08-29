@@ -19,6 +19,7 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   deleted: { kind: "success", text: "Cliente excluido com sucesso." },
   optical_created: { kind: "success", text: "Registro optico salvo no historico do cliente." },
   duplicate: { kind: "error", text: "Ja existe um cliente com esse CPF/CNPJ." },
+  plan_limit: { kind: "error", text: "O limite de clientes do plano foi atingido. Consulte Assinatura e plano." },
   invalid: { kind: "error", text: "Revise CPF/CNPJ e nome antes de salvar." },
   optical_invalid: { kind: "error", text: "Revise cliente e data antes de salvar o registro optico." },
   optical_error: { kind: "error", text: "Nao foi possivel salvar o registro optico agora." },

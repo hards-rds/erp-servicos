@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
+import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
+import { createServiceClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -8,25 +9,12 @@ function read(formData: FormData, key: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) return NextResponse.redirect(new URL("/login", request.url), 303);
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("company_id,role,active")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (!profile?.company_id || profile.active === false) {
-    return NextResponse.redirect(new URL("/configuracoes/emails?status=profile_error", request.url), 303);
+  const access = await requireCompanyPermission({ module: "configuracoes.emails", action: "configurar", roles: ["master", "system_admin"] });
+  if (!access.ok) {
+    if (access.reason === "unauthorized") return NextResponse.redirect(new URL("/login", request.url), 303);
+    return NextResponse.redirect(new URL(`/configuracoes/emails?status=${access.reason === "forbidden" ? "forbidden" : "profile_error"}`, request.url), 303);
   }
-  if (!["master", "system_admin"].includes(profile.role)) {
-    return NextResponse.redirect(new URL("/configuracoes/emails?status=forbidden", request.url), 303);
-  }
+  const { profile } = access;
 
   const formData = await request.formData();
   const provider = read(formData, "provider").toLowerCase();
@@ -52,6 +40,8 @@ export async function POST(request: NextRequest) {
   const { error } = existing?.id
     ? await service.from("email_settings").update(payload).eq("id", existing.id)
     : await service.from("email_settings").insert(payload);
+
+  if (!error) await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "email_settings", entityId: existing?.id || null, action: "configure", metadata: { provider, emailFrom } });
 
   return NextResponse.redirect(new URL(`/configuracoes/emails?status=${error ? "error" : "saved"}`, request.url), 303);
 }

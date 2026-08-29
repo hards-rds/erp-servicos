@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { canMarkPayablePaid, getPayableMutationBlocker } from "@/domains/finance/payables";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
 
 const allowedStatuses = new Set(["previsto", "aprovado", "pago"]);
 const allowedEditStatuses = new Set(["previsto", "aprovado", "vencido", "cancelado"]);
@@ -23,36 +23,19 @@ function redirectWith(request: NextRequest, status: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.redirect(new URL("/login", request.url), 303);
-  }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id,company_id,active")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (!profile?.company_id || profile.active === false) return redirectWith(request, "profile_error");
-
   const formData = await request.formData();
   const action = readString(formData, "action") || "create";
   const payableId = readString(formData, "payableId");
+  const permissionAction = action === "create" ? "criar" : action === "pay" ? "aprovar" : "editar";
+  const access = await requireCompanyPermission({ module: "financeiro.saidas", action: permissionAction });
+  if (!access.ok) {
+    if (access.reason === "unauthorized") return NextResponse.redirect(new URL("/login", request.url), 303);
+    return redirectWith(request, access.reason === "forbidden" ? "forbidden" : "profile_error");
+  }
+  const { supabase, profile } = access;
 
   if (["update", "pay"].includes(action)) {
     if (!payableId) return redirectWith(request, "invalid");
-
-    const permissionAction = action === "pay" ? "aprovar" : "editar";
-    const { data: allowed } = await supabase.rpc("app_has_permission", {
-      permission_module: "financeiro.saidas",
-      permission_action: permissionAction
-    });
-    if (!allowed) return redirectWith(request, "forbidden");
 
     const [{ data: payable }, commissionResult, reconciliationResult] = await Promise.all([
       supabase
@@ -102,6 +85,14 @@ export async function POST(request: NextRequest) {
         .eq("status", payable.status)
         .select("id");
       if (error || !updated?.length) return redirectWith(request, "payment_error");
+      await writeCompanyAudit({
+        companyId: profile.company_id,
+        actorId: profile.id,
+        entity: "payable",
+        entityId: payable.id,
+        action: "pay",
+        metadata: { paidAt, paymentMethod }
+      });
       return redirectWith(request, "paid");
     }
 
@@ -136,6 +127,13 @@ export async function POST(request: NextRequest) {
       .eq("status", payable.status)
       .select("id");
     if (error || !updated?.length) return redirectWith(request, "update_error");
+    await writeCompanyAudit({
+      companyId: profile.company_id,
+      actorId: profile.id,
+      entity: "payable",
+      entityId: payable.id,
+      action: "update"
+    });
     return redirectWith(request, "updated");
   }
 
@@ -164,7 +162,7 @@ export async function POST(request: NextRequest) {
   if (invalid) return redirectWith(request, "invalid");
 
   const now = new Date().toISOString();
-  const { error } = await supabase.from("payables").insert({
+  const { data: created, error } = await supabase.from("payables").insert({
     company_id: profile.company_id,
     vendor_name: vendorName,
     category,
@@ -182,9 +180,17 @@ export async function POST(request: NextRequest) {
     updated_by: profile.id,
     created_at: now,
     updated_at: now
-  });
+  }).select("id").single();
 
-  if (error) return redirectWith(request, "error");
+  if (error || !created) return redirectWith(request, "error");
+
+  await writeCompanyAudit({
+    companyId: profile.company_id,
+    actorId: profile.id,
+    entity: "payable",
+    entityId: created.id,
+    action: "create"
+  });
 
   return redirectWith(request, "created");
 }

@@ -12,6 +12,9 @@ export type ContractFormValue = {
   due_day: number;
   starts_at: string;
   status: string;
+  auto_generate_financial: boolean;
+  auto_issue_nfse: boolean;
+  auto_generate_charge: boolean;
   fiscal_service_data: Record<string, unknown> | null;
   notes: string | null;
 };
@@ -101,6 +104,22 @@ export function ContractForm({
           <option value="suspenso">Suspenso</option>
         </select>
       </label>
+      <fieldset className="checkbox-panel">
+        <legend>Automacoes por competencia</legend>
+        <p className="muted">O processamento e idempotente: executar novamente nao duplica entradas, notas ou boletos.</p>
+        <label className="checkbox-row">
+          <input type="checkbox" name="autoGenerateFinancial" defaultChecked={contract?.auto_generate_financial === true} />
+          <span>Gerar o financeiro automaticamente nas competencias previstas</span>
+        </label>
+        <label className="checkbox-row">
+          <input type="checkbox" name="autoIssueNfse" defaultChecked={contract?.auto_issue_nfse === true} />
+          <span>Colocar a NFS-e na fila para conferencia do operador</span>
+        </label>
+        <label className="checkbox-row">
+          <input type="checkbox" name="autoGenerateCharge" defaultChecked={contract?.auto_generate_charge === true} />
+          <span>Emitir cobranca quando o Banco Inter estiver ativo</span>
+        </label>
+      </fieldset>
       <fieldset className="checkbox-panel">
         <legend>Servico na NFS-e (opcional)</legend>
         <p className="muted">Preencha os codigos fiscais somente se este contrato puder emitir NFS-e.</p>

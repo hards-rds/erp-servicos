@@ -26,7 +26,7 @@ export default async function EditarContratoPage({ params }: EditarContratoPageP
       .order("legal_name", { ascending: true }),
     supabase
       .from("contracts")
-      .select("id,client_id,service_description,recurring_amount,periodicity,due_day,starts_at,status,fiscal_service_data,notes")
+      .select("id,client_id,service_description,recurring_amount,periodicity,due_day,starts_at,status,auto_generate_financial,auto_issue_nfse,auto_generate_charge,fiscal_service_data,notes")
       .eq("company_id", profile.company_id)
       .eq("id", id)
       .maybeSingle()

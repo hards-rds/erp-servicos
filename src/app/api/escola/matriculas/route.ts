@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { competenceFromDate, dueDateForCompetence } from "@/lib/dates/competence";
 import { getSchoolContext, parseSchoolMoney } from "@/lib/school/server";
+import { isPlanLimitError } from "@/domains/billing/saas-plans";
+import { canCreateTenantResource, tenantHasFeature } from "@/server/services/saas-plan-service";
 
 function value(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
@@ -11,13 +13,14 @@ function redirectWith(request: NextRequest, status: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const context = await getSchoolContext();
+  const formData = await request.formData();
+  const action = value(formData, "action") || "create";
+  const permissionAction = action === "delete" ? "excluir" : action === "create" ? "criar" : "editar";
+  const context = await getSchoolContext(permissionAction);
   if (!context.user) return NextResponse.redirect(new URL("/login", request.url), 303);
   if (!context.allowed || !context.profile?.company_id) return redirectWith(request, "forbidden");
 
   const { supabase, profile } = context;
-  const formData = await request.formData();
-  const action = value(formData, "action") || "create";
   const enrollmentId = value(formData, "enrollmentId");
 
   if (action === "generate_financial") {
@@ -92,10 +95,20 @@ export async function POST(request: NextRequest) {
     monthly_amount: monthlyAmount,
     discount_amount: discountAmount,
     status: value(formData, "status") || "ativa",
+    auto_generate_financial: formData.get("autoGenerateFinancial") === "on",
     notes: value(formData, "notes") || null,
     updated_by: profile.id,
     updated_at: new Date().toISOString()
   };
+  let enablesAutomation = payload.auto_generate_financial;
+  if (action === "update" && enrollmentId && payload.auto_generate_financial) {
+    const { data: existingAutomation } = await supabase.from("school_enrollments").select("auto_generate_financial")
+      .eq("id", enrollmentId).eq("company_id", profile.company_id).maybeSingle();
+    enablesAutomation = !existingAutomation?.auto_generate_financial;
+  }
+  if (enablesAutomation && !(await tenantHasFeature(profile.tenant_id, "recurring_automation"))) {
+    return redirectWith(request, "feature_unavailable");
+  }
 
   if (action === "update") {
     const { error } = await supabase.from("school_enrollments").update(payload)
@@ -103,10 +116,13 @@ export async function POST(request: NextRequest) {
     return redirectWith(request, error ? (error.code === "23505" ? "duplicate" : "error") : "updated");
   }
 
+  const capacity = await canCreateTenantResource(profile.tenant_id, "recurrences");
+  if (!capacity.allowed) return redirectWith(request, "plan_limit");
+
   const { error } = await supabase.from("school_enrollments").insert({
     company_id: profile.company_id,
     ...payload,
     created_by: profile.id
   });
-  return redirectWith(request, error ? (error.code === "23505" ? "duplicate" : "error") : "created");
+  return redirectWith(request, error ? (error.code === "23505" ? "duplicate" : isPlanLimitError(error) ? "plan_limit" : "error") : "created");
 }

@@ -46,6 +46,7 @@ const userMessages: Record<string, { type: "success" | "error"; message: string 
   deactivated: { type: "success", message: "Usuario desativado." },
   invalid: { type: "error", message: "Preencha nome, e-mail, perfil e uma senha com pelo menos 8 caracteres." },
   duplicate: { type: "error", message: "Ja existe um usuario com esse e-mail." },
+  plan_limit: { type: "error", message: "O limite de usuarios ativos do plano foi atingido. Consulte Assinatura e plano." },
   forbidden: { type: "error", message: "Apenas usuarios master podem administrar usuarios." },
   invalid_status: { type: "error", message: "Nao foi possivel alterar o status desse usuario." },
   group_error: { type: "error", message: "Usuario salvo, mas houve falha ao vincular os grupos." },

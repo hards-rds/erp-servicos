@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
+import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
+import { createServiceClient } from "@/lib/supabase/server";
 import { syncPlanetChat } from "@/server/services/planetchat-sync-service";
+import { tenantHasFeature } from "@/server/services/saas-plan-service";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -22,22 +24,20 @@ function utcPeriod(from: string, to: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(new URL("/login", request.url), 303);
-  const { data: profile } = await supabase.from("profiles")
-    .select("company_id,active")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!profile?.company_id || profile.active === false) return redirectWith(request, "profile_error");
-  const { data: company } = await supabase.from("companies")
-    .select("service_segment")
-    .eq("id", profile.company_id)
-    .maybeSingle();
-  if (company?.service_segment !== "tecnologia") return redirectWith(request, "segment_error");
-
   const formData = await request.formData();
   const action = String(formData.get("action") || "sync");
+  const access = await requireCompanyPermission({
+    module: "operacao.chamados",
+    action: action === "link" ? "editar" : "criar",
+    segment: "tecnologia"
+  });
+  if (!access.ok) {
+    if (access.reason === "unauthorized") return NextResponse.redirect(new URL("/login", request.url), 303);
+    if (access.reason === "segment") return redirectWith(request, "segment_error");
+    return redirectWith(request, access.reason === "forbidden" ? "forbidden" : "profile_error");
+  }
+  const { profile, user } = access;
+
   if (action === "link") {
     const supportOrderId = String(formData.get("supportOrderId") || "");
     const clientId = String(formData.get("clientId") || "");
@@ -57,8 +57,19 @@ export async function POST(request: NextRequest) {
       match_status: "manual",
       updated_at: new Date().toISOString()
     }).eq("id", supportOrderId).eq("company_id", profile.company_id);
-    return redirectWith(request, error ? "link_error" : "linked");
+    if (error) return redirectWith(request, "link_error");
+    await writeCompanyAudit({
+      companyId: profile.company_id,
+      actorId: profile.id,
+      entity: "support_order",
+      entityId: supportOrderId,
+      action: "link_client",
+      metadata: { clientId, contractId: contractId || null }
+    });
+    return redirectWith(request, "linked");
   }
+
+  if (!(await tenantHasFeature(profile.tenant_id, "api_integrations"))) return redirectWith(request, "plan_feature");
 
   const today = new Date().toISOString().slice(0, 10);
   const from = String(formData.get("from") || today);
@@ -71,6 +82,19 @@ export async function POST(request: NextRequest) {
       requestedBy: user.id,
       periodStart: period.start,
       periodEnd: period.end
+    });
+    await writeCompanyAudit({
+      companyId: profile.company_id,
+      actorId: profile.id,
+      entity: "planetchat_sync",
+      action: "sync",
+      metadata: {
+        periodStart: period.start,
+        periodEnd: period.end,
+        supportOrders: result.supportOrders,
+        events: result.events,
+        messages: result.messages
+      }
     });
     return redirectWith(request, result.warning ? "sync_partial" : "synced", {
       imported: result.supportOrders,

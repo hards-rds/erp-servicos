@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { writeCompanyAudit } from "@/lib/auth/api-access";
 import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
 import { uniqueTenantSlug } from "@/lib/tenancy/slug";
 
@@ -124,6 +125,15 @@ export async function POST(request: NextRequest) {
       return redirectWith(request, "error");
     }
 
+    await writeCompanyAudit({
+      companyId,
+      actorId: access.actorId,
+      entity: "tenant",
+      entityId: tenantId,
+      action: "update",
+      metadata: { companyId, plan, tenantStatus, companyActive, serviceSegment }
+    });
+
     return redirectWith(request, "updated");
   }
 
@@ -230,6 +240,15 @@ export async function POST(request: NextRequest) {
       group_id: masterGroup.id
     });
   }
+
+  await writeCompanyAudit({
+    companyId: company.id,
+    actorId: access.actorId,
+    entity: "tenant",
+    entityId: tenant.id,
+    action: "create",
+    metadata: { companyId: company.id, plan, serviceSegment }
+  });
 
   return redirectWith(request, "created");
 }

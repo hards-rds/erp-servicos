@@ -28,6 +28,7 @@ const messages: Record<string, { kind: "success" | "error"; text: string }> = {
   cancel_error: { kind: "error", text: "O Banco Inter nao confirmou o cancelamento." },
   cancel_invalid: { kind: "error", text: "Informe um motivo de cancelamento com pelo menos 5 caracteres." },
   invalid: { kind: "error", text: "Cobranca ou entrada financeira invalida." },
+  plan_feature: { kind: "error", text: "Novas cobrancas integradas exigem o plano Pro ou Enterprise." },
   profile_error: { kind: "error", text: "Seu usuario nao esta vinculado a uma empresa ativa." }
 };
 

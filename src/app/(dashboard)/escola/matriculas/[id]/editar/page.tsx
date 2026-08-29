@@ -6,7 +6,7 @@ import { getSchoolContext } from "@/lib/school/server";
 export default async function EditEnrollmentPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params; const context = await getSchoolContext(); const companyId = context.profile?.company_id; if (!context.allowed || !companyId) notFound();
   const [{ data: enrollment }, { data: athletes }, { data: classes }] = await Promise.all([
-    context.supabase.from("school_enrollments").select("id,athlete_id,class_id,starts_at,ends_at,due_day,monthly_amount,discount_amount,status,notes").eq("id", id).eq("company_id", companyId).maybeSingle(),
+    context.supabase.from("school_enrollments").select("id,athlete_id,class_id,starts_at,ends_at,due_day,monthly_amount,discount_amount,status,auto_generate_financial,notes").eq("id", id).eq("company_id", companyId).maybeSingle(),
     context.supabase.from("school_athletes").select("id,full_name,category").eq("company_id", companyId).eq("status", "ativo").order("full_name"),
     context.supabase.from("school_classes").select("id,name,category,default_monthly_fee").eq("company_id", companyId).order("name")
   ]); if (!enrollment) notFound();

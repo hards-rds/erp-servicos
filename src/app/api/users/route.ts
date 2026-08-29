@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
+import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
+import { createServiceClient } from "@/lib/supabase/server";
+import { canCreateTenantResource } from "@/server/services/saas-plan-service";
 
 export const runtime = "nodejs";
 
@@ -9,27 +11,6 @@ function redirectWith(request: NextRequest, status: string) {
 
 function isEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-}
-
-async function getMasterActor() {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) return { actor: null, error: "unauthorized" };
-
-  const { data: actor } = await supabase
-    .from("profiles")
-    .select("id,tenant_id,company_id,role,active")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (!actor?.company_id || !actor.tenant_id || !["master", "system_admin"].includes(actor.role) || actor.active === false) {
-    return { actor: null, error: "forbidden" };
-  }
-
-  return { actor, error: null };
 }
 
 async function replaceUserGroups(
@@ -66,9 +47,12 @@ async function replaceUserGroups(
 }
 
 export async function POST(request: NextRequest) {
-  const { actor, error: actorError } = await getMasterActor();
-  if (actorError === "unauthorized") return NextResponse.redirect(new URL("/login", request.url), 303);
-  if (!actor) return redirectWith(request, "forbidden");
+  const access = await requireCompanyPermission({ module: "configuracoes.usuarios", action: "configurar", roles: ["master", "system_admin"] });
+  if (!access.ok) {
+    if (access.reason === "unauthorized") return NextResponse.redirect(new URL("/login", request.url), 303);
+    return redirectWith(request, access.reason === "forbidden" ? "forbidden" : "profile_error");
+  }
+  const actor = access.profile;
 
   const formData = await request.formData();
   const action = String(formData.get("action") || "create").trim();
@@ -84,6 +68,9 @@ export async function POST(request: NextRequest) {
     if (!isEmail(email) || !name || password.length < 8 || !["usuario", "admin", "master"].includes(role)) {
       return redirectWith(request, "invalid");
     }
+
+    const capacity = await canCreateTenantResource(actor.tenant_id, "users");
+    if (!capacity.allowed) return redirectWith(request, "plan_limit");
 
     const { data: created, error: createError } = await service.auth.admin.createUser({
       email,
@@ -110,13 +97,18 @@ export async function POST(request: NextRequest) {
     if (profileError) return redirectWith(request, "error");
 
     if (actor.tenant_id) {
-      await service.from("tenant_members").upsert({
+      const { error: tenantMemberError } = await service.from("tenant_members").upsert({
         tenant_id: actor.tenant_id,
         user_id: created.user.id,
         role: role === "master" ? "owner" : role === "admin" ? "admin" : "member",
         active: true,
         updated_at: new Date().toISOString()
       });
+      if (tenantMemberError) {
+        await service.from("profiles").delete().eq("id", created.user.id).eq("tenant_id", actor.tenant_id);
+        await service.auth.admin.deleteUser(created.user.id);
+        return redirectWith(request, tenantMemberError.message.includes("plan_limit:") ? "plan_limit" : "error");
+      }
     }
 
     await service.from("company_members").upsert({
@@ -128,6 +120,7 @@ export async function POST(request: NextRequest) {
     });
 
     const groupError = await replaceUserGroups(service, created.user.id, actor.company_id, groupIds);
+    if (!groupError) await writeCompanyAudit({ companyId: actor.company_id, actorId: actor.id, entity: "user", entityId: created.user.id, action: "create", metadata: { role, groupIds } });
     return redirectWith(request, groupError ? "group_error" : "created");
   }
 
@@ -136,6 +129,10 @@ export async function POST(request: NextRequest) {
     const active = String(formData.get("active") || "") === "true";
 
     if (!userId || userId === actor.id) return redirectWith(request, "invalid_status");
+    if (active) {
+      const capacity = await canCreateTenantResource(actor.tenant_id, "users");
+      if (!capacity.allowed) return redirectWith(request, "plan_limit");
+    }
     const { data: targetUser } = await service
       .from("profiles")
       .select("id")
@@ -144,6 +141,13 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
     if (!targetUser) return redirectWith(request, "invalid_status");
 
+    const { error: tenantMemberError } = await service
+      .from("tenant_members")
+      .update({ active, updated_at: new Date().toISOString() })
+      .eq("tenant_id", actor.tenant_id)
+      .eq("user_id", userId);
+    if (tenantMemberError) return redirectWith(request, tenantMemberError.message.includes("plan_limit:") ? "plan_limit" : "error");
+
     const { error } = await service
       .from("profiles")
       .update({ active, updated_at: new Date().toISOString() })
@@ -151,16 +155,12 @@ export async function POST(request: NextRequest) {
       .eq("company_id", actor.company_id);
 
     await service
-      .from("tenant_members")
-      .update({ active, updated_at: new Date().toISOString() })
-      .eq("tenant_id", actor.tenant_id)
-      .eq("user_id", userId);
-
-    await service
       .from("company_members")
       .update({ active, updated_at: new Date().toISOString() })
       .eq("company_id", actor.company_id)
       .eq("user_id", userId);
+
+    if (!error) await writeCompanyAudit({ companyId: actor.company_id, actorId: actor.id, entity: "user", entityId: userId, action: active ? "activate" : "deactivate" });
 
     return redirectWith(request, error ? "error" : active ? "activated" : "deactivated");
   }
@@ -204,6 +204,7 @@ export async function POST(request: NextRequest) {
     });
 
     const groupError = await replaceUserGroups(service, userId, actor.company_id, groupIds);
+    if (!groupError) await writeCompanyAudit({ companyId: actor.company_id, actorId: actor.id, entity: "user", entityId: userId, action: "update_access", metadata: { role, groupIds } });
     return redirectWith(request, groupError ? "group_error" : "updated");
   }
 

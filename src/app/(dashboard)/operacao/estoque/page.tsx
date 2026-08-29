@@ -35,6 +35,7 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   movement_invalid: { kind: "error", text: "Revise produto, tipo e quantidade da movimentacao." },
   stock_negative: { kind: "error", text: "A movimentacao deixaria o estoque negativo." },
   duplicate: { kind: "error", text: "Ja existe um produto com esse SKU." },
+  plan_limit: { kind: "error", text: "O limite de produtos e servicos do plano foi atingido. Consulte Assinatura e plano." },
   product_error: { kind: "error", text: "Nao foi possivel cadastrar o produto agora." },
   movement_error: { kind: "error", text: "Nao foi possivel registrar a movimentacao agora." },
   profile_error: { kind: "error", text: "Seu usuario ainda nao esta vinculado a uma empresa." }
