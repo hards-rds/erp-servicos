@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import test from "node:test";
 import { findAuthorizedNfseXml } from "../src/lib/fiscal/nfse-xml.ts";
@@ -32,3 +33,11 @@ test("gera DANFSe v2.0 em PDF a partir do XML autorizado", async () => {
   assert.ok(pdf.length > 5000);
 });
 
+test("empacota as fontes padrao do PDFKit nas rotas que geram DANFSe", () => {
+  const config = readFileSync(new URL("../next.config.ts", import.meta.url), "utf8");
+  assert.match(config, /serverExternalPackages: \["pdfkit"\]/);
+  for (const route of ["danfse", "emitir", "enviar-email"]) {
+    assert.match(config, new RegExp(`/api/fiscal/nfse/${route}`));
+  }
+  assert.match(config, /node_modules\/pdfkit\/js\/data\/\*\.afm/);
+});

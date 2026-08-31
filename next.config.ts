@@ -3,6 +3,12 @@ import path from "node:path";
 
 const nextConfig: NextConfig = {
   outputFileTracingRoot: path.resolve(process.cwd()),
+  serverExternalPackages: ["pdfkit"],
+  outputFileTracingIncludes: {
+    "/api/fiscal/nfse/danfse": ["./node_modules/pdfkit/js/data/*.afm"],
+    "/api/fiscal/nfse/emitir": ["./node_modules/pdfkit/js/data/*.afm"],
+    "/api/fiscal/nfse/enviar-email": ["./node_modules/pdfkit/js/data/*.afm"]
+  },
   async headers() {
     return [
       {

@@ -13,6 +13,14 @@ function redirectWith(request: NextRequest, status: string, message: string) {
   return NextResponse.redirect(target, 303);
 }
 
+function pdfGenerationError(documentId: string, error: unknown) {
+  console.error("danfse_pdf_generation_failed", {
+    documentId,
+    error: error instanceof Error ? error.message : "unknown"
+  });
+  return "Nao foi possivel gerar o DANFSe agora. Tente novamente em instantes.";
+}
+
 async function requireDocumentAccess(documentId: string) {
   const access = await requireCompanyPermission({ module: "fiscal.notas", action: "visualizar" });
   if (!access.ok) return { error: access.reason === "unauthorized" ? "unauthenticated" as const : "forbidden" as const };
@@ -67,7 +75,7 @@ export async function GET(request: NextRequest) {
     return redirectWith(
       request,
       "pdf_error",
-      error instanceof Error ? error.message : "Nao foi possivel gerar o DANFSe."
+      pdfGenerationError(documentId, error)
     );
   }
 }
@@ -90,7 +98,7 @@ export async function POST(request: NextRequest) {
     return redirectWith(
       request,
       "pdf_error",
-      error instanceof Error ? error.message : "Nao foi possivel gerar o DANFSe."
+      pdfGenerationError(documentId, error)
     );
   }
 }
