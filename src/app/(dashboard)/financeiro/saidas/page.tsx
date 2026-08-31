@@ -91,6 +91,7 @@ export default async function SaidasPage({ searchParams }: SaidasPageProps) {
 
   let payables: PayableRow[] = [];
   const protectedPayableIds = new Set<string>();
+  const protectedEditPayableIds = new Set<string>();
   let canEdit = false;
   let canPay = false;
   if (profile?.company_id) {
@@ -110,12 +111,16 @@ export default async function SaidasPage({ searchParams }: SaidasPageProps) {
     canPay = Boolean(payPermission);
     const payableIds = payables.map((payable) => payable.id);
     if (payableIds.length) {
-      const [{ data: commissions }, { data: reconciliations }] = await Promise.all([
+      const [{ data: commissions }, { data: reconciliations }, { data: contractorCompensations }] = await Promise.all([
         supabase.from("commissions").select("payable_id").eq("company_id", profile.company_id).in("payable_id", payableIds),
-        supabase.from("bank_reconciliations").select("payable_id").eq("company_id", profile.company_id).in("payable_id", payableIds)
+        supabase.from("bank_reconciliations").select("payable_id").eq("company_id", profile.company_id).in("payable_id", payableIds),
+        supabase.from("contractor_compensations").select("payable_id").eq("company_id", profile.company_id).in("payable_id", payableIds)
       ]);
       for (const item of [...(commissions || []), ...(reconciliations || [])]) {
         if (item.payable_id) protectedPayableIds.add(item.payable_id);
+      }
+      for (const item of contractorCompensations || []) {
+        if (item.payable_id) protectedEditPayableIds.add(item.payable_id);
       }
     }
   }
@@ -181,7 +186,7 @@ export default async function SaidasPage({ searchParams }: SaidasPageProps) {
                         payableId={payable.id}
                         description={payable.description}
                         amount={payable.amount}
-                        canEdit={canEdit && !protectedPayableIds.has(payable.id) && canEditPayable(payable.status)}
+                        canEdit={canEdit && !protectedPayableIds.has(payable.id) && !protectedEditPayableIds.has(payable.id) && canEditPayable(payable.status)}
                         canPay={canPay && !protectedPayableIds.has(payable.id) && canMarkPayablePaid(payable.status)}
                         canStopSeries={canEdit && series?.kind === "fixed" && series.active}
                         seriesId={payable.series_id}

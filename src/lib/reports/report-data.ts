@@ -317,6 +317,8 @@ async function payablesReport(filters: ReportFilters): Promise<ReportResult> {
       const series = Array.isArray(row.payable_series) ? row.payable_series[0] || null : row.payable_series;
       const origin = row.category === "Comissoes"
         ? "Comissao aprovada"
+        : row.category === "Prestadores PJ"
+          ? "Remuneracao PJ"
         : series?.kind === "fixed"
           ? "Despesa fixa"
           : series?.kind === "installment"

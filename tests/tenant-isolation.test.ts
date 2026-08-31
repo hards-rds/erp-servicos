@@ -25,6 +25,9 @@ const tenantPages = [
   "src/app/(dashboard)/operacao/estoque/page.tsx",
   "src/app/(dashboard)/operacao/chamados/page.tsx",
   "src/app/(dashboard)/operacao/vendas/page.tsx",
+  "src/app/(dashboard)/pessoas/colaboradores/page.tsx",
+  "src/app/(dashboard)/pessoas/fechamentos/page.tsx",
+  "src/app/(dashboard)/pessoas/fechamentos/[id]/page.tsx",
   "src/app/(dashboard)/configuracoes/automacoes/page.tsx",
   "src/app/(dashboard)/notificacoes/page.tsx"
 ];

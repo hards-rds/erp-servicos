@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
   if (["update", "pay"].includes(action)) {
     if (!payableId) return redirectWith(request, "invalid");
 
-    const [{ data: payable }, commissionResult, reconciliationResult] = await Promise.all([
+    const [{ data: payable }, commissionResult, reconciliationResult, contractorCompensationResult] = await Promise.all([
       supabase
         .from("payables")
         .select("id,vendor_name,category,description,competence,due_date,amount,status,notes")
@@ -65,7 +65,8 @@ export async function POST(request: NextRequest) {
         .eq("company_id", profile.company_id)
         .maybeSingle(),
       supabase.from("commissions").select("id", { count: "exact", head: true }).eq("payable_id", payableId).eq("company_id", profile.company_id),
-      supabase.from("bank_reconciliations").select("id", { count: "exact", head: true }).eq("payable_id", payableId).eq("company_id", profile.company_id)
+      supabase.from("bank_reconciliations").select("id", { count: "exact", head: true }).eq("payable_id", payableId).eq("company_id", profile.company_id),
+      supabase.from("contractor_compensations").select("id", { count: "exact", head: true }).eq("payable_id", payableId).eq("company_id", profile.company_id)
     ]);
     if (!payable) return redirectWith(request, "not_found");
 
@@ -76,6 +77,7 @@ export async function POST(request: NextRequest) {
     });
     if (blocker === "settled") return redirectWith(request, "settled");
     if (blocker === "linked") return redirectWith(request, "linked");
+    if (action === "update" && (contractorCompensationResult.count || 0) > 0) return redirectWith(request, "linked");
 
     const now = new Date().toISOString();
     if (action === "pay") {

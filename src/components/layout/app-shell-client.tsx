@@ -12,10 +12,12 @@ import {
   BarChart3,
   Barcode,
   Bell,
+  BriefcaseBusiness,
   Building2,
   Building,
   ChartNoAxesCombined,
   CalendarCheck2,
+  Calculator,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
@@ -79,6 +81,13 @@ const nav = [
       { href: "/operacao/vendas", label: "Vendas", icon: ShoppingCart },
       { href: "/operacao/estoque", label: "Estoque", icon: Package },
       { href: "/operacao/chamados", label: "Chamados", icon: MessagesSquare, onlyForSegments: ["tecnologia"] }
+    ]
+  },
+  {
+    title: "Pessoas",
+    items: [
+      { href: "/pessoas/colaboradores", label: "Prestadores PJ", icon: BriefcaseBusiness },
+      { href: "/pessoas/fechamentos", label: "Fechamentos", icon: Calculator }
     ]
   },
   {
