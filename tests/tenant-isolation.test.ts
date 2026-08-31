@@ -113,8 +113,14 @@ test("RLS operacional nao concede acesso global ao system_admin", () => {
 
 test("administracao de usuarios valida empresa do usuario e dos grupos", () => {
   const route = readFileSync("src/app/api/users/route.ts", "utf8");
+  const page = readFileSync("src/app/(dashboard)/configuracoes/usuarios/page.tsx", "utf8");
   assert.match(route, /\.eq\("company_id", companyId\)/);
   assert.match(route, /\.eq\("company_id", actor\.company_id\)/);
+  assert.match(route, /targetUser\.role === "system_admin"/);
+  assert.match(route, /actor\.role !== "system_admin"/);
+  assert.match(route, /\? "system_admin" : requestedRole/);
+  assert.match(page, /System admin \(protegido\)/);
+  assert.match(page, /name="role" value="system_admin"/);
 });
 
 test("operacoes do Inter derivam cobranca e entrada da empresa ativa", () => {

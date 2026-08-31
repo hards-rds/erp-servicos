@@ -49,6 +49,7 @@ const userMessages: Record<string, { type: "success" | "error"; message: string 
   plan_limit: { type: "error", message: "O limite de usuarios ativos do plano foi atingido. Consulte Assinatura e plano." },
   forbidden: { type: "error", message: "Apenas usuarios master podem administrar usuarios." },
   invalid_status: { type: "error", message: "Nao foi possivel alterar o status desse usuario." },
+  protected_admin: { type: "error", message: "O perfil system_admin e protegido e so pode ser administrado por outro system_admin." },
   group_error: { type: "error", message: "Usuario salvo, mas houve falha ao vincular os grupos." },
   error: { type: "error", message: "Nao foi possivel salvar o usuario agora." }
 };
@@ -222,23 +223,28 @@ export default async function UsuariosPage({
       <section className="table-panel">
         <h2>Perfis e grupos</h2>
         <div className="settings-list">
-          {allProfiles.map((item) => (
+          {allProfiles.map((item) => {
+            const protectedSystemAdmin = item.role === "system_admin";
+            const canEditItem = isMaster && (!protectedSystemAdmin || role === "system_admin");
+            return (
             <form className="settings-row" action="/api/users" method="post" key={item.id}>
               <input type="hidden" name="action" value="groups" />
               <input type="hidden" name="userId" value={item.id} />
+              {protectedSystemAdmin ? <input type="hidden" name="role" value="system_admin" /> : null}
               <div>
                 <strong>{item.name || item.email}</strong>
                 <div className="muted">{item.email}</div>
               </div>
               <label>
                 Perfil
-                <select name="role" defaultValue={item.role} disabled={!isMaster}>
+                <select name={protectedSystemAdmin ? undefined : "role"} defaultValue={item.role} disabled={!canEditItem || protectedSystemAdmin}>
+                  {protectedSystemAdmin ? <option value="system_admin">System admin (protegido)</option> : null}
                   <option value="usuario">Usuario</option>
                   <option value="admin">Admin</option>
                   <option value="master">Master</option>
                 </select>
               </label>
-              <fieldset className="checkbox-panel compact-checkboxes" disabled={!isMaster}>
+              <fieldset className="checkbox-panel compact-checkboxes" disabled={!canEditItem}>
                 <legend>Grupos</legend>
                 {allGroups.map((group) => (
                   <label className="checkbox-row" key={group.id}>
@@ -247,9 +253,10 @@ export default async function UsuariosPage({
                   </label>
                 ))}
               </fieldset>
-              <button className="primary-button" type="submit" disabled={!isMaster}>Salvar</button>
+              <button className="primary-button" type="submit" disabled={!canEditItem}>Salvar</button>
             </form>
-          ))}
+            );
+          })}
         </div>
       </section>
       <section className="form-panel">

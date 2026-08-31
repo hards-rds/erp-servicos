@@ -167,17 +167,26 @@ export async function POST(request: NextRequest) {
 
   if (action === "groups") {
     const userId = String(formData.get("userId") || "").trim();
-    const role = String(formData.get("role") || "usuario").trim();
+    const requestedRole = String(formData.get("role") || "usuario").trim();
     const groupIds = formData.getAll("groupIds").map(String).filter(Boolean);
 
-    if (!userId || !["usuario", "admin", "master"].includes(role)) return redirectWith(request, "invalid");
+    if (!userId) return redirectWith(request, "invalid");
     const { data: targetUser } = await service
       .from("profiles")
-      .select("id")
+      .select("id,role")
       .eq("id", userId)
       .eq("company_id", actor.company_id)
       .maybeSingle();
     if (!targetUser) return redirectWith(request, "invalid");
+
+    if (targetUser.role === "system_admin" && actor.role !== "system_admin") {
+      return redirectWith(request, "protected_admin");
+    }
+
+    const role = targetUser.role === "system_admin" ? "system_admin" : requestedRole;
+    if (role !== "system_admin" && !["usuario", "admin", "master"].includes(role)) {
+      return redirectWith(request, "invalid");
+    }
 
     const { error: profileError } = await service
       .from("profiles")
@@ -190,7 +199,7 @@ export async function POST(request: NextRequest) {
     await service.from("tenant_members").upsert({
       tenant_id: actor.tenant_id,
       user_id: userId,
-      role: role === "master" ? "owner" : role === "admin" ? "admin" : "member",
+      role: role === "system_admin" ? "system_admin" : role === "master" ? "owner" : role === "admin" ? "admin" : "member",
       active: true,
       updated_at: new Date().toISOString()
     });
