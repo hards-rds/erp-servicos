@@ -50,6 +50,7 @@ export type RecurrenceAutomationSummary = {
   partial: number;
   failed: number;
   alerts: number;
+  fixedPayablesGenerated: number;
 };
 
 function validFiscalData(data: Record<string, unknown> | null) {
@@ -407,7 +408,8 @@ export async function runRecurringAutomation(options?: { competence?: string; co
     completed: 0,
     partial: 0,
     failed: 0,
-    alerts: 0
+    alerts: 0,
+    fixedPayablesGenerated: 0
   };
   const byCompany = new Map<string, { completed: number; partial: number; failed: number }>();
 
@@ -430,6 +432,16 @@ export async function runRecurringAutomation(options?: { competence?: string; co
     if (result !== "skipped") summary.processed += 1;
     countCompany(enrollment.company_id, result);
   }
+
+  const { data: generatedPayables, error: payableScheduleError } = await supabase.rpc("ensure_fixed_payable_horizon", {
+    target_competence: competence,
+    target_company_id: options?.companyId || null,
+    forecast_months: 12
+  });
+  if (payableScheduleError) {
+    throw new Error(`Nao foi possivel atualizar as despesas fixas: ${payableScheduleError.message}`);
+  }
+  summary.fixedPayablesGenerated = Number(generatedPayables || 0);
 
   summary.alerts = await createFinancialAlerts(options?.companyId);
 

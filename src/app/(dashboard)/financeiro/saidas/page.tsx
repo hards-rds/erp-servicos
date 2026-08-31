@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { PayableActions } from "@/components/finance/payable-actions";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { canEditPayable, canMarkPayablePaid } from "@/domains/finance/payables";
+import { payableScheduleLabel, type PayableScheduleType } from "@/domains/finance/payable-schedules";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type PayableRow = {
@@ -15,6 +16,10 @@ type PayableRow = {
   amount: number | string;
   payment_method: string | null;
   status: string;
+  series_id: string | null;
+  installment_number: number | null;
+  installment_total: number | null;
+  payable_series: { kind: "installment" | "fixed"; active: boolean } | Array<{ kind: "installment" | "fixed"; active: boolean }> | null;
 };
 
 type SaidasPageProps = {
@@ -23,6 +28,8 @@ type SaidasPageProps = {
 
 const statusMessages: Record<string, { kind: "success" | "error"; text: string }> = {
   created: { kind: "success", text: "Conta a pagar cadastrada com sucesso." },
+  installments_created: { kind: "success", text: "Compra parcelada cadastrada e parcelas geradas no fluxo financeiro." },
+  fixed_created: { kind: "success", text: "Despesa fixa cadastrada e proximas competencias geradas no fluxo financeiro." },
   invalid: { kind: "error", text: "Revise os dados da conta, o valor e as datas informadas." },
   error: { kind: "error", text: "Nao foi possivel cadastrar a conta a pagar agora." },
   profile_error: { kind: "error", text: "Seu usuario ainda nao esta vinculado a uma empresa." },
@@ -33,7 +40,11 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   linked: { kind: "error", text: "Esta conta e controlada por uma comissao ou conciliacao e deve ser alterada no modulo de origem." },
   forbidden: { kind: "error", text: "Seu usuario nao possui permissao para esta operacao." },
   update_error: { kind: "error", text: "Nao foi possivel atualizar a conta a pagar agora." },
-  payment_error: { kind: "error", text: "Nao foi possivel registrar o pagamento agora." }
+  payment_error: { kind: "error", text: "Nao foi possivel registrar o pagamento agora." },
+  series_stopped: { kind: "success", text: "Despesa fixa encerrada. Os meses futuros em aberto foram cancelados." },
+  series_already_stopped: { kind: "error", text: "Esta despesa fixa ja estava encerrada." },
+  series_stop_error: { kind: "error", text: "Nao foi possivel encerrar a despesa fixa agora." },
+  schedule_error: { kind: "error", text: "Nao foi possivel gerar as competencias da despesa. Revise os dados informados." }
 };
 
 function formatMoney(value: number | string) {
@@ -64,6 +75,10 @@ function getTone(status: string) {
   return "neutral" as const;
 }
 
+function getSeries(payable: PayableRow) {
+  return Array.isArray(payable.payable_series) ? payable.payable_series[0] || null : payable.payable_series;
+}
+
 export default async function SaidasPage({ searchParams }: SaidasPageProps) {
   const params = await searchParams;
   const supabase = await createServerSupabaseClient();
@@ -82,11 +97,11 @@ export default async function SaidasPage({ searchParams }: SaidasPageProps) {
     const [{ data }, { data: editPermission }, { data: payPermission }] = await Promise.all([
       supabase
         .from("payables")
-        .select("id,vendor_name,category,description,competence,due_date,paid_at,amount,payment_method,status")
+        .select("id,vendor_name,category,description,competence,due_date,paid_at,amount,payment_method,status,series_id,installment_number,installment_total,payable_series(kind,active)")
         .eq("company_id", profile.company_id)
-        .order("due_date", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(100),
+        .order("due_date", { ascending: true })
+        .order("created_at", { ascending: true })
+        .limit(500),
       supabase.rpc("app_has_permission", { permission_module: "financeiro.saidas", permission_action: "editar" }),
       supabase.rpc("app_has_permission", { permission_module: "financeiro.saidas", permission_action: "aprovar" })
     ]);
@@ -128,6 +143,7 @@ export default async function SaidasPage({ searchParams }: SaidasPageProps) {
               <tr>
                 <th>Fornecedor</th>
                 <th>Categoria</th>
+                <th>Tipo</th>
                 <th>Competencia</th>
                 <th>Vencimento</th>
                 <th>Valor</th>
@@ -137,38 +153,45 @@ export default async function SaidasPage({ searchParams }: SaidasPageProps) {
               </tr>
             </thead>
             <tbody>
-              {payables.length ? payables.map((payable) => (
-                <tr key={payable.id}>
-                  <td>
-                    <strong>{payable.vendor_name}</strong>
-                    <div className="muted">{payable.description}</div>
-                  </td>
-                  <td>{payable.category}</td>
-                  <td>{payable.competence}</td>
-                  <td>{formatDate(payable.due_date)}</td>
-                  <td>{formatMoney(payable.amount)}</td>
-                  <td>
-                    {payable.paid_at ? (
-                      <>
-                        <strong>{formatDate(payable.paid_at)}</strong>
-                        <div className="muted">{formatPaymentMethod(payable.payment_method)}</div>
-                      </>
-                    ) : "-"}
-                  </td>
-                  <td><StatusBadge tone={getTone(payable.status)}>{payable.status}</StatusBadge></td>
-                  <td>
-                    <PayableActions
-                      payableId={payable.id}
-                      description={payable.description}
-                      amount={payable.amount}
-                      canEdit={canEdit && !protectedPayableIds.has(payable.id) && canEditPayable(payable.status)}
-                      canPay={canPay && !protectedPayableIds.has(payable.id) && canMarkPayablePaid(payable.status)}
-                    />
-                  </td>
-                </tr>
-              )) : (
+              {payables.length ? payables.map((payable) => {
+                const series = getSeries(payable);
+                const scheduleType: PayableScheduleType = series?.kind || "single";
+                return (
+                  <tr key={payable.id}>
+                    <td>
+                      <strong>{payable.vendor_name}</strong>
+                      <div className="muted">{payable.description}</div>
+                    </td>
+                    <td>{payable.category}</td>
+                    <td>{payableScheduleLabel({ type: scheduleType, installmentNumber: payable.installment_number, installmentTotal: payable.installment_total })}</td>
+                    <td>{payable.competence}</td>
+                    <td>{formatDate(payable.due_date)}</td>
+                    <td>{formatMoney(payable.amount)}</td>
+                    <td>
+                      {payable.paid_at ? (
+                        <>
+                          <strong>{formatDate(payable.paid_at)}</strong>
+                          <div className="muted">{formatPaymentMethod(payable.payment_method)}</div>
+                        </>
+                      ) : "-"}
+                    </td>
+                    <td><StatusBadge tone={getTone(payable.status)}>{payable.status}</StatusBadge></td>
+                    <td>
+                      <PayableActions
+                        payableId={payable.id}
+                        description={payable.description}
+                        amount={payable.amount}
+                        canEdit={canEdit && !protectedPayableIds.has(payable.id) && canEditPayable(payable.status)}
+                        canPay={canPay && !protectedPayableIds.has(payable.id) && canMarkPayablePaid(payable.status)}
+                        canStopSeries={canEdit && series?.kind === "fixed" && series.active}
+                        seriesId={payable.series_id}
+                      />
+                    </td>
+                  </tr>
+                );
+              }) : (
                 <tr>
-                  <td colSpan={8}>Nenhuma saida cadastrada.</td>
+                  <td colSpan={9}>Nenhuma saida cadastrada.</td>
                 </tr>
               )}
             </tbody>

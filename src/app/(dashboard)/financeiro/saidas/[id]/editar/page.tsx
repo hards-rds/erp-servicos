@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { EditPayableForm } from "@/components/finance/edit-payable-form";
 import { PageHeader } from "@/components/layout/page-header";
 import { canEditPayable } from "@/domains/finance/payables";
+import { payableScheduleLabel, type PayableScheduleType } from "@/domains/finance/payable-schedules";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export default async function EditarSaidaPage({ params }: { params: Promise<{ id: string }> }) {
@@ -15,7 +16,7 @@ export default async function EditarSaidaPage({ params }: { params: Promise<{ id
 
   const { data: payable } = await supabase
     .from("payables")
-    .select("id,vendor_name,category,description,competence,due_date,amount,status,notes")
+    .select("id,vendor_name,category,description,competence,due_date,amount,status,notes,installment_number,installment_total,payable_series(kind)")
     .eq("id", id)
     .eq("company_id", profile.company_id)
     .maybeSingle();
@@ -32,6 +33,9 @@ export default async function EditarSaidaPage({ params }: { params: Promise<{ id
     permission_action: "editar"
   });
   if (!canEdit) notFound();
+
+  const series = Array.isArray(payable.payable_series) ? payable.payable_series[0] || null : payable.payable_series;
+  const scheduleType: PayableScheduleType = series?.kind || "single";
 
   return (
     <>
@@ -51,7 +55,12 @@ export default async function EditarSaidaPage({ params }: { params: Promise<{ id
           dueDate: payable.due_date,
           amount: payable.amount,
           status: payable.status,
-          notes: payable.notes
+          notes: payable.notes,
+          scheduleLabel: scheduleType === "single" ? null : payableScheduleLabel({
+            type: scheduleType,
+            installmentNumber: payable.installment_number,
+            installmentTotal: payable.installment_total
+          })
         }} />
       </section>
     </>

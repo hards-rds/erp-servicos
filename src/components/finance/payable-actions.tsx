@@ -1,6 +1,6 @@
 "use client";
 
-import { Banknote, Pencil, X } from "lucide-react";
+import { Banknote, CalendarX, Pencil, X } from "lucide-react";
 import { useRef } from "react";
 import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 
@@ -10,17 +10,20 @@ type PayableActionsProps = {
   amount: number | string;
   canEdit: boolean;
   canPay: boolean;
+  canStopSeries?: boolean;
+  seriesId?: string | null;
 };
 
 function formatMoney(value: number | string) {
   return Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-export function PayableActions({ payableId, description, amount, canEdit, canPay }: PayableActionsProps) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
+export function PayableActions({ payableId, description, amount, canEdit, canPay, canStopSeries = false, seriesId }: PayableActionsProps) {
+  const paymentDialogRef = useRef<HTMLDialogElement>(null);
+  const stopDialogRef = useRef<HTMLDialogElement>(null);
   const today = new Date().toISOString().slice(0, 10);
 
-  if (!canEdit && !canPay) return <span className="muted">-</span>;
+  if (!canEdit && !canPay && !canStopSeries) return <span className="muted">-</span>;
 
   return (
     <RowActionsMenu label={`Acoes da saida ${description}`}>
@@ -37,13 +40,23 @@ export function PayableActions({ payableId, description, amount, canEdit, canPay
         <button
           className="primary-button compact-button button-with-icon"
           type="button"
-          onClick={() => dialogRef.current?.showModal()}
+          onClick={() => paymentDialogRef.current?.showModal()}
         >
           <Banknote aria-hidden="true" size={16} />
           Dar baixa
         </button>
       ) : null}
-      <dialog className="action-dialog" ref={dialogRef} aria-labelledby={`pay-payable-${payableId}`}>
+      {canStopSeries && seriesId ? (
+        <button
+          className="danger-button compact-button button-with-icon"
+          type="button"
+          onClick={() => stopDialogRef.current?.showModal()}
+        >
+          <CalendarX aria-hidden="true" size={16} />
+          Encerrar despesa fixa
+        </button>
+      ) : null}
+      <dialog className="action-dialog" ref={paymentDialogRef} aria-labelledby={`pay-payable-${payableId}`}>
         <div className="dialog-header">
           <div>
             <h2 id={`pay-payable-${payableId}`}>Confirmar pagamento</h2>
@@ -54,7 +67,7 @@ export function PayableActions({ payableId, description, amount, canEdit, canPay
             type="button"
             title="Fechar"
             aria-label="Fechar"
-            onClick={() => dialogRef.current?.close()}
+            onClick={() => paymentDialogRef.current?.close()}
           >
             <X aria-hidden="true" />
           </button>
@@ -85,11 +98,33 @@ export function PayableActions({ payableId, description, amount, canEdit, canPay
             <input name="paymentNotes" placeholder="Comprovante, autorizacao ou observacao" />
           </label>
           <div className="dialog-actions">
-            <button className="ghost-button" type="button" onClick={() => dialogRef.current?.close()}>Voltar</button>
+            <button className="ghost-button" type="button" onClick={() => paymentDialogRef.current?.close()}>Voltar</button>
             <button className="primary-button" type="submit">Confirmar baixa</button>
           </div>
         </form>
       </dialog>
+      {seriesId ? (
+        <dialog className="action-dialog" ref={stopDialogRef} aria-labelledby={`stop-payable-series-${seriesId}`}>
+          <div className="dialog-header">
+            <div>
+              <h2 id={`stop-payable-series-${seriesId}`}>Encerrar despesa fixa</h2>
+              <p className="dialog-description">{description}</p>
+            </div>
+            <button className="icon-button" type="button" title="Fechar" aria-label="Fechar" onClick={() => stopDialogRef.current?.close()}>
+              <X aria-hidden="true" />
+            </button>
+          </div>
+          <p>Os meses futuros em aberto serao cancelados. O mes atual e os pagamentos anteriores permanecem no historico.</p>
+          <form action="/api/financeiro/saidas" method="post">
+            <input type="hidden" name="action" value="stop_series" />
+            <input type="hidden" name="seriesId" value={seriesId} />
+            <div className="dialog-actions">
+              <button className="ghost-button" type="button" onClick={() => stopDialogRef.current?.close()}>Voltar</button>
+              <button className="danger-button" type="submit">Confirmar encerramento</button>
+            </div>
+          </form>
+        </dialog>
+      ) : null}
     </RowActionsMenu>
   );
 }

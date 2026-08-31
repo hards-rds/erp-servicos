@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { GlobalTableSorter } from "@/components/ui/global-table-sorter";
 import {
   Activity,
   BadgeCheck,
@@ -219,6 +220,7 @@ export function AppShellClient({
 
   return (
     <div className={`app-shell${collapsed ? " sidebar-collapsed" : ""}${mobileOpen ? " sidebar-open" : ""}`}>
+      <GlobalTableSorter />
       <aside className="sidebar" id="app-sidebar" aria-label="Modulos">
         <div className="sidebar-header">
           <Link className="sidebar-brand" href="/dashboard" title="Mundo Livre Tecnologia">

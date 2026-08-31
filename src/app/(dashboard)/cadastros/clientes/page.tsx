@@ -2,7 +2,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-type ClientesPageProps = { searchParams?: Promise<{ status?: string; page?: string; q?: string }> };
+type ClientesPageProps = { searchParams?: Promise<{ status?: string; page?: string; q?: string; sort?: string; dir?: string }> };
 type ClientRow = {
   id: string;
   legal_name: string;
@@ -33,10 +33,20 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
 };
 
 const clientsPerPage = 50;
+const clientSortColumns = {
+  name: "legal_name",
+  document: "document",
+  email: "fiscal_email",
+  phone: "phone",
+  status: "status"
+} as const;
+type ClientSortKey = keyof typeof clientSortColumns;
 
-function clientsPageUrl(page: number, search: string) {
+function clientsPageUrl(page: number, search: string, sort: ClientSortKey, direction: "asc" | "desc") {
   const params = new URLSearchParams();
   if (search) params.set("q", search);
+  if (sort !== "name") params.set("sort", sort);
+  if (direction !== "asc") params.set("dir", direction);
   if (page > 1) params.set("page", String(page));
   const query = params.toString();
   return `/cadastros/clientes${query ? `?${query}` : ""}`;
@@ -57,6 +67,8 @@ export default async function ClientesPage({ searchParams }: ClientesPageProps) 
   const params = await searchParams;
   const requestedPage = Math.max(1, Number.parseInt(params?.page || "1", 10) || 1);
   const search = safeSearchTerm(params?.q || "");
+  const sort = (params?.sort && params.sort in clientSortColumns ? params.sort : "name") as ClientSortKey;
+  const direction = params?.dir === "desc" ? "desc" : "asc";
   const rangeStart = (requestedPage - 1) * clientsPerPage;
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -80,7 +92,7 @@ export default async function ClientesPage({ searchParams }: ClientesPageProps) 
 
   const { data: clients, count: totalClients } = clientsQuery
     ? await clientsQuery
-      .order("legal_name", { ascending: true })
+      .order(clientSortColumns[sort], { ascending: direction === "asc", nullsFirst: false })
       .range(rangeStart, rangeStart + clientsPerPage - 1)
     : { data: [], count: 0 };
   const allClients = (clients || []) as ClientRow[];
@@ -115,6 +127,8 @@ export default async function ClientesPage({ searchParams }: ClientesPageProps) 
             <span className="list-count">{new Intl.NumberFormat("pt-BR").format(total)} {total === 1 ? "cliente" : "clientes"}</span>
           </div>
           <form className={`list-search${search ? "" : " single-action"}`} action="/cadastros/clientes" method="get">
+            <input type="hidden" name="sort" value={sort} />
+            <input type="hidden" name="dir" value={direction} />
             <label className="sr-only" htmlFor="client-search">Buscar cliente</label>
             <input id="client-search" name="q" type="search" defaultValue={search} placeholder="Buscar por nome, CPF ou CNPJ" />
             <button className="ghost-button" type="submit">Buscar</button>
@@ -122,8 +136,8 @@ export default async function ClientesPage({ searchParams }: ClientesPageProps) 
           </form>
         </div>
         <div className="table-wrap">
-          <table>
-            <thead><tr><th>Nome/Razao social</th><th>CPF/CNPJ</th><th>E-mail fiscal</th><th>Telefone</th>{company?.service_segment === "otica" ? <th>Receita</th> : null}<th>Status</th><th>Acoes</th></tr></thead>
+          <table data-server-sort="true" data-sort-key="clients" data-sort-column={sort} data-sort-direction={direction === "asc" ? "ascending" : "descending"}>
+            <thead><tr><th data-sort-key="name">Nome/Razao social</th><th data-sort-key="document">CPF/CNPJ</th><th data-sort-key="email">E-mail fiscal</th><th data-sort-key="phone">Telefone</th>{company?.service_segment === "otica" ? <th data-sortable="false">Receita</th> : null}<th data-sort-key="status">Status</th><th>Acoes</th></tr></thead>
             <tbody>
               {allClients.length ? allClients.map((client) => (
                 <tr key={client.id}>
@@ -151,9 +165,9 @@ export default async function ClientesPage({ searchParams }: ClientesPageProps) 
         <nav className="pagination" aria-label="Paginacao de clientes">
           <span className="pagination-summary">Exibindo {new Intl.NumberFormat("pt-BR").format(firstVisible)}-{new Intl.NumberFormat("pt-BR").format(lastVisible)} de {new Intl.NumberFormat("pt-BR").format(total)}</span>
           <div className="pagination-actions">
-            {requestedPage > 1 ? <a className="ghost-button button-link compact-button" href={clientsPageUrl(requestedPage - 1, search)}>Anterior</a> : <span className="ghost-button compact-button disabled-control">Anterior</span>}
+            {requestedPage > 1 ? <a className="ghost-button button-link compact-button" href={clientsPageUrl(requestedPage - 1, search, sort, direction)}>Anterior</a> : <span className="ghost-button compact-button disabled-control">Anterior</span>}
             <span className="pagination-page">Pagina {Math.min(requestedPage, totalPages)} de {totalPages}</span>
-            {requestedPage < totalPages ? <a className="ghost-button button-link compact-button" href={clientsPageUrl(requestedPage + 1, search)}>Proxima</a> : <span className="ghost-button compact-button disabled-control">Proxima</span>}
+            {requestedPage < totalPages ? <a className="ghost-button button-link compact-button" href={clientsPageUrl(requestedPage + 1, search, sort, direction)}>Proxima</a> : <span className="ghost-button compact-button disabled-control">Proxima</span>}
           </div>
         </nav>
       </section>

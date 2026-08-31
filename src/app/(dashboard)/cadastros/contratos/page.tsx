@@ -102,7 +102,9 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
         .maybeSingle()
     ])
     : [{ data: [] }, { data: null }];
-  const allContracts = (contracts || []) as ContractRow[];
+  const allContracts = ((contracts || []) as ContractRow[]).sort((left, right) =>
+    getClientName(left).localeCompare(getClientName(right), "pt-BR", { sensitivity: "base", numeric: true })
+  );
   const message = params?.status ? statusMessages[params.status] : null;
 
   return (
@@ -122,7 +124,7 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
             <table>
               <thead>
                 <tr>
-                  <th>Cliente</th>
+                  <th data-sort-default="ascending">Cliente</th>
                   <th>Servico</th>
                   <th>Valor</th>
                   <th>Vencimento</th>

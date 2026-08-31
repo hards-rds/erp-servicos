@@ -5,7 +5,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
 
 type PageProps = {
-  searchParams?: Promise<{ status?: string; from?: string; to?: string; q?: string; page?: string; imported?: string; events?: string; messages?: string; matched?: string }>;
+  searchParams?: Promise<{ status?: string; from?: string; to?: string; q?: string; page?: string; imported?: string; events?: string; messages?: string; matched?: string; sort?: string; dir?: string }>;
 };
 type Relation<T> = T | T[] | null;
 type SupportRow = {
@@ -51,6 +51,14 @@ const messages: Record<string, { kind: "success" | "error"; text: string }> = {
 };
 
 const pageSize = 50;
+const supportSortColumns = {
+  start: "started_at",
+  protocol: "protocol",
+  queue: "queue_name",
+  duration: "service_seconds",
+  status_label: "status_label"
+} as const;
+type SupportSortKey = keyof typeof supportSortColumns;
 
 function safeDate(value: string | undefined, fallback: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value || "") ? value as string : fallback;
@@ -84,9 +92,11 @@ function tone(statusCode: number | null) {
   return "neutral" as const;
 }
 
-function pageUrl(page: number, from: string, to: string, search: string) {
+function pageUrl(page: number, from: string, to: string, search: string, sort: SupportSortKey, direction: "asc" | "desc") {
   const params = new URLSearchParams({ from, to });
   if (search) params.set("q", search);
+  if (sort !== "start") params.set("sort", sort);
+  if (direction !== "desc") params.set("dir", direction);
   if (page > 1) params.set("page", String(page));
   return `/operacao/chamados?${params.toString()}`;
 }
@@ -99,6 +109,8 @@ export default async function ChamadosPage({ searchParams }: PageProps) {
   const from = safeDate(params?.from, defaultFrom);
   const to = safeDate(params?.to, defaultTo);
   const search = safeSearch(params?.q);
+  const sort = (params?.sort && params.sort in supportSortColumns ? params.sort : "start") as SupportSortKey;
+  const direction = params?.dir === "asc" ? "asc" : "desc";
   const requestedPage = Math.max(1, Number.parseInt(params?.page || "1", 10) || 1);
   const start = new Date(`${from}T00:00:00.000-03:00`).toISOString();
   const end = new Date(`${to}T23:59:59.999-03:00`).toISOString();
@@ -126,7 +138,7 @@ export default async function ChamadosPage({ searchParams }: PageProps) {
   const rangeStart = (requestedPage - 1) * pageSize;
   const [{ data: orders, count }, { data: summary }, { data: credential }, { data: latestRun }, { data: attendantMetrics }] = profile?.company_id && isTechnology
     ? await Promise.all([
-      query!.order("started_at", { ascending: false }).range(rangeStart, rangeStart + pageSize - 1),
+      query!.order(supportSortColumns[sort], { ascending: direction === "asc", nullsFirst: false }).range(rangeStart, rangeStart + pageSize - 1),
       supabase.rpc("planetchat_support_summary", { p_company_id: profile.company_id, p_from: start, p_to: end }),
       service.from("api_credentials").select("active").eq("company_id", profile.company_id).eq("provider", "planetchat").eq("environment", "production").maybeSingle(),
       supabase.from("planetchat_sync_runs").select("status,started_at,warning_message,error_message").eq("company_id", profile.company_id).order("started_at", { ascending: false }).limit(1).maybeSingle(),
@@ -171,15 +183,16 @@ export default async function ChamadosPage({ searchParams }: PageProps) {
           <div><h2>Ordens de servico importadas</h2><span className="list-count">{new Intl.NumberFormat("pt-BR").format(total)} registros</span></div>
           <form className={`list-search${search ? "" : " single-action"}`} action="/operacao/chamados" method="get">
             <input type="hidden" name="from" value={from} /><input type="hidden" name="to" value={to} />
+            <input type="hidden" name="sort" value={sort} /><input type="hidden" name="dir" value={direction} />
             <label className="sr-only" htmlFor="support-search">Buscar chamado</label>
             <input id="support-search" name="q" type="search" defaultValue={search} placeholder="Protocolo, contato ou telefone" />
             <button className="ghost-button" type="submit">Buscar</button>
-            {search ? <a className="ghost-button button-link" href={pageUrl(1, from, to, "")}>Limpar</a> : null}
+            {search ? <a className="ghost-button button-link" href={pageUrl(1, from, to, "", sort, direction)}>Limpar</a> : null}
           </form>
         </div>
         <div className="table-wrap">
-          <table>
-            <thead><tr><th>Inicio</th><th>Protocolo / contato</th><th>Cliente / contrato</th><th>Fila / atendente</th><th>Tempo</th><th>Status</th><th>Acoes</th></tr></thead>
+          <table data-server-sort="true" data-sort-key="support-orders" data-sort-column={sort} data-sort-direction={direction === "asc" ? "ascending" : "descending"}>
+            <thead><tr><th data-sort-key="start">Inicio</th><th data-sort-key="protocol">Protocolo / contato</th><th data-sortable="false">Cliente / contrato</th><th data-sort-key="queue">Fila / atendente</th><th data-sort-key="duration">Tempo</th><th data-sort-key="status_label">Status</th><th>Acoes</th></tr></thead>
             <tbody>{rows.length ? rows.map((order) => {
               const client = first(order.clients);
               const contract = first(order.contracts);
@@ -198,8 +211,8 @@ export default async function ChamadosPage({ searchParams }: PageProps) {
         <nav className="pagination" aria-label="Paginacao de chamados">
           <span className="pagination-summary">Pagina {Math.min(requestedPage, pages)} de {pages}</span>
           <div className="pagination-actions">
-            {requestedPage > 1 ? <a className="ghost-button button-link compact-button" href={pageUrl(requestedPage - 1, from, to, search)}>Anterior</a> : <span className="ghost-button compact-button disabled-control">Anterior</span>}
-            {requestedPage < pages ? <a className="ghost-button button-link compact-button" href={pageUrl(requestedPage + 1, from, to, search)}>Proxima</a> : <span className="ghost-button compact-button disabled-control">Proxima</span>}
+            {requestedPage > 1 ? <a className="ghost-button button-link compact-button" href={pageUrl(requestedPage - 1, from, to, search, sort, direction)}>Anterior</a> : <span className="ghost-button compact-button disabled-control">Anterior</span>}
+            {requestedPage < pages ? <a className="ghost-button button-link compact-button" href={pageUrl(requestedPage + 1, from, to, search, sort, direction)}>Proxima</a> : <span className="ghost-button compact-button disabled-control">Proxima</span>}
           </div>
         </nav>
       </section>

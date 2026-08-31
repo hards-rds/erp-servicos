@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { canMarkPayablePaid, getPayableMutationBlocker } from "@/domains/finance/payables";
+import { isPayableScheduleType } from "@/domains/finance/payable-schedules";
 import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
 
 const allowedStatuses = new Set(["previsto", "aprovado", "pago"]);
@@ -33,6 +34,25 @@ export async function POST(request: NextRequest) {
     return redirectWith(request, access.reason === "forbidden" ? "forbidden" : "profile_error");
   }
   const { supabase, profile } = access;
+
+  if (action === "stop_series") {
+    const seriesId = readString(formData, "seriesId");
+    if (!seriesId) return redirectWith(request, "invalid");
+    const { data: result, error } = await supabase.rpc("app_stop_fixed_payable_series", {
+      target_series_id: seriesId
+    });
+    if (error || result !== "stopped") {
+      return redirectWith(request, result === "stop_already" ? "series_already_stopped" : "series_stop_error");
+    }
+    await writeCompanyAudit({
+      companyId: profile.company_id,
+      actorId: profile.id,
+      entity: "payable_series",
+      entityId: seriesId,
+      action: "stop"
+    });
+    return redirectWith(request, "series_stopped");
+  }
 
   if (["update", "pay"].includes(action)) {
     if (!payableId) return redirectWith(request, "invalid");
@@ -147,6 +167,9 @@ export async function POST(request: NextRequest) {
   const amount = parseMoney(readString(formData, "amount"));
   const paidAt = readString(formData, "paidAt");
   const paymentMethod = readString(formData, "paymentMethod");
+  const scheduleType = readString(formData, "scheduleType") || "single";
+  const installmentCountValue = Number.parseInt(readString(formData, "installmentCount"), 10);
+  const installmentCount = Number.isInteger(installmentCountValue) ? installmentCountValue : null;
 
   const invalid =
     !vendorName ||
@@ -155,11 +178,40 @@ export async function POST(request: NextRequest) {
     !/^\d{4}-\d{2}$/.test(competence) ||
     !/^\d{4}-\d{2}-\d{2}$/.test(dueDate) ||
     !allowedStatuses.has(status) ||
+    !isPayableScheduleType(scheduleType) ||
     amount === null ||
     amount <= 0 ||
-    (status === "pago" && (!paidAt || !paymentMethod));
+    (status === "pago" && (!paidAt || !paymentMethod)) ||
+    (scheduleType !== "single" && status === "pago") ||
+    (scheduleType === "installment" && (installmentCount === null || installmentCount < 2 || installmentCount > 120));
 
   if (invalid) return redirectWith(request, "invalid");
+
+  if (scheduleType !== "single") {
+    const { data: seriesId, error: scheduleError } = await supabase.rpc("app_create_payable_schedule", {
+      target_company_id: profile.company_id,
+      target_kind: scheduleType,
+      target_vendor_name: vendorName,
+      target_category: category,
+      target_description: description,
+      target_amount: amount,
+      target_first_competence: competence,
+      target_first_due_date: dueDate,
+      target_installment_count: scheduleType === "installment" ? installmentCount : null,
+      target_status: status,
+      target_notes: readString(formData, "notes") || null
+    });
+    if (scheduleError || !seriesId) return redirectWith(request, "schedule_error");
+    await writeCompanyAudit({
+      companyId: profile.company_id,
+      actorId: profile.id,
+      entity: "payable_series",
+      entityId: seriesId,
+      action: "create",
+      metadata: { scheduleType, installmentCount, amount }
+    });
+    return redirectWith(request, scheduleType === "installment" ? "installments_created" : "fixed_created");
+  }
 
   const now = new Date().toISOString();
   const { data: created, error } = await supabase.from("payables").insert({

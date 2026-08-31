@@ -239,6 +239,9 @@ async function payablesReport(filters: ReportFilters): Promise<ReportResult> {
     payment_method: string | null;
     status: string;
     created_at: string;
+    installment_number?: number | null;
+    installment_total?: number | null;
+    payable_series?: { kind: "installment" | "fixed" } | Array<{ kind: "installment" | "fixed" }> | null;
   };
   type CommissionRow = {
     id: string;
@@ -268,7 +271,7 @@ async function payablesReport(filters: ReportFilters): Promise<ReportResult> {
     fetchAllReportRows<Omit<Row, "origin">>((from, to) => {
       let query = supabase
         .from("payables")
-        .select("id,vendor_name,category,description,competence,due_date,paid_at,amount,payment_method,status,created_at")
+        .select("id,vendor_name,category,description,competence,due_date,paid_at,amount,payment_method,status,created_at,installment_number,installment_total,payable_series(kind)")
         .eq("company_id", companyId)
         .order("created_at", { ascending: false })
         .order("id");
@@ -310,10 +313,17 @@ async function payablesReport(filters: ReportFilters): Promise<ReportResult> {
 
   const payableRows = payablesData
     .filter((row) => dateInRange(row.created_at, filters) || dateInRange(row.due_date, filters) || dateInRange(row.paid_at, filters))
-    .map((row) => ({
-      ...row,
-      origin: row.category === "Comissoes" ? "Comissao aprovada" : "Conta a pagar"
-    }));
+    .map((row) => {
+      const series = Array.isArray(row.payable_series) ? row.payable_series[0] || null : row.payable_series;
+      const origin = row.category === "Comissoes"
+        ? "Comissao aprovada"
+        : series?.kind === "fixed"
+          ? "Despesa fixa"
+          : series?.kind === "installment"
+            ? `Compra parcelada ${row.installment_number || "-"}/${row.installment_total || "-"}`
+            : "Conta a pagar";
+      return { ...row, origin };
+    });
   const commissionRows = commissionsData
     .filter((commission) => (
       dateInRange(commission.created_at, filters)
