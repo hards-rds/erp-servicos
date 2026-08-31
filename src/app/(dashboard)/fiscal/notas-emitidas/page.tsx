@@ -116,9 +116,15 @@ export default async function NotasEmitidasPage({ searchParams }: NotasEmitidasP
                               Baixar XML
                             </a>
                             {document.danfse_file_id ? (
-                              <a className="ghost-button compact-button button-link" href={`/api/fiscal/nfse/danfse?id=${document.id}`}>
-                                Baixar PDF
-                              </a>
+                              <>
+                                <a className="ghost-button compact-button button-link" href={`/api/fiscal/nfse/danfse?id=${document.id}`}>
+                                  Baixar PDF
+                                </a>
+                                <form action="/api/fiscal/nfse/danfse" method="post">
+                                  <input type="hidden" name="nfseDocumentId" value={document.id} />
+                                  <button className="ghost-button compact-button" type="submit">Atualizar PDF</button>
+                                </form>
+                              </>
                             ) : (
                               <form action="/api/fiscal/nfse/danfse" method="post">
                                 <input type="hidden" name="nfseDocumentId" value={document.id} />

@@ -43,6 +43,16 @@ function numberValue(scope: XmlScope, localName: string) {
   return raw && Number.isFinite(parsed) ? parsed : null;
 }
 
+function deepValue(scope: XmlScope, localName: string) {
+  return element(scope, localName)?.textContent?.trim() || "";
+}
+
+function deepNumberValue(scope: XmlScope, localName: string) {
+  const raw = deepValue(scope, localName).replace(",", ".");
+  const parsed = Number(raw);
+  return raw && Number.isFinite(parsed) ? parsed : null;
+}
+
 function digits(input: unknown) {
   return String(input ?? "").replace(/\D/g, "");
 }
@@ -98,7 +108,7 @@ function address(scope: XmlScope) {
   return {
     line: parts.join(", ") || "-",
     cityCode: value(national, "cMun") || value(root, "cMun"),
-    city: value(root, "xMun"),
+    city: value(national, "xMun") || value(root, "xMun"),
     uf: value(national, "UF") || value(root, "UF"),
     cep: value(national, "CEP") || value(root, "CEP")
   };
@@ -138,7 +148,12 @@ function parseOfficialXml(xml: string) {
   const officialValues = directElement(info, "valores");
   const regime = xmlPath(provider, "regTrib");
   const issuerAddress = address(issuer);
-  const providerData = { ...person(issuer), phone: value(provider, "fone"), email: value(provider, "email") };
+  const providerData = {
+    ...person(issuer),
+    city: address(issuer).city || value(info, "xLocEmi"),
+    phone: value(provider, "fone"),
+    email: value(provider, "email")
+  };
   const accessKey = digits(info.getAttribute("Id")).slice(-50);
 
   return {
@@ -152,6 +167,7 @@ function parseOfficialXml(xml: string) {
     dpsSeries: value(dpsInfo, "serie"),
     dpsIssuedAt: value(dpsInfo, "dhEmi"),
     status: value(info, "cStat"),
+    purpose: deepValue(info, "finNFSe") || deepValue(dpsInfo, "finNFSe"),
     issuerType: value(dpsInfo, "tpEmit"),
     city: value(info, "xLocEmi") || issuerAddress.city,
     provider: providerData,
@@ -174,6 +190,40 @@ function parseOfficialXml(xml: string) {
     issAmount: numberValue(officialValues, "vISSQN"),
     issType: value(municipalTaxes, "tribISSQN"),
     issRetention: value(municipalTaxes, "tpRetISSQN"),
+    municipalTaxCity: deepValue(info, "xLocIncid") || value(info, "xLocPrestacao"),
+    federal: {
+      irrf: deepNumberValue(officialValues, "vRetIRRF"),
+      socialSecurity: deepNumberValue(officialValues, "vRetCP"),
+      socialContributions: deepNumberValue(officialValues, "vRetCSLL"),
+      pis: deepNumberValue(officialValues, "vPIS"),
+      cofins: deepNumberValue(officialValues, "vCOFINS"),
+      retainedDescription: deepValue(officialValues, "xDescRetFed")
+    },
+    ibsCbs: {
+      cst: deepValue(info, "CST"),
+      taxClass: deepValue(info, "cClassTrib"),
+      operationIndicator: deepValue(info, "indOp"),
+      incidenceCityCode: deepValue(info, "cMunIncid"),
+      incidenceCity: deepValue(info, "xMunIncid"),
+      incidenceUf: deepValue(info, "UFIncid"),
+      exclusions: deepNumberValue(info, "vExcBC"),
+      base: deepNumberValue(info, "vBCIBSCBS"),
+      ibsReduction: deepNumberValue(info, "pRedAliqIBS"),
+      cbsReduction: deepNumberValue(info, "pRedAliqCBS"),
+      ibsStateRate: deepNumberValue(info, "pAliqIBSUF"),
+      ibsCityRate: deepNumberValue(info, "pAliqIBSMun"),
+      ibsCityEffectiveRate: deepNumberValue(info, "pAliqEfetIBSMun"),
+      ibsCityAmount: deepNumberValue(info, "vIBSMun"),
+      ibsStateEffectiveRate: deepNumberValue(info, "pAliqEfetIBSUF"),
+      ibsStateAmount: deepNumberValue(info, "vIBSUF"),
+      ibsTotal: deepNumberValue(info, "vIBS"),
+      cbsRate: deepNumberValue(info, "pAliqCBS"),
+      cbsEffectiveRate: deepNumberValue(info, "pAliqEfetCBS"),
+      cbsTotal: deepNumberValue(info, "vCBS")
+    },
+    unconditionalDiscount: deepNumberValue(officialValues, "vDescIncond"),
+    conditionalDiscount: deepNumberValue(officialValues, "vDescCond"),
+    retainedTotal: deepNumberValue(officialValues, "vTotRet"),
     federalTax: numberValue(totalTaxes, "pTotTribFed"),
     stateTax: numberValue(totalTaxes, "pTotTribEst"),
     municipalTax: numberValue(totalTaxes, "pTotTribMun"),
@@ -229,98 +279,149 @@ export async function buildGovernmentDanfsePdf(xml: string) {
     drawText(label, xs[column] + 4, y + 2, w - 8, { bold: true, size: 5.7, height: 8 });
     drawText(content, xs[column] + 4, y + 10, w - 8, { size: options.valueSize || 6.7, height: options.height || 10 });
   };
-  const section = (label: string, y: number) => {
-    shade(left, y, col, 19);
+  const section = (label: string, y: number, height = 19) => {
+    shade(left, y, col, height);
     drawText(label, left + 4, y + 5, col - 8, { bold: true, size: 6.4, height: 9 });
   };
+  const approximateTaxes = [
+    `Federais: ${percent(data.federalTax)}`,
+    `Estaduais: ${percent(data.stateTax)}`,
+    `Municipais: ${percent(data.municipalTax)}`
+  ].join("; ");
+  const complementaryInformation = [
+    data.complements,
+    `Totais aproximados dos Tributos cfe. Lei n° 12.741/2012: ${approximateTaxes};`
+  ].filter((item) => item && item !== "-").join("\n");
+  const ibsCbsTotal = Number(data.ibsCbs.ibsTotal || 0) + Number(data.ibsCbs.cbsTotal || 0);
+  const finalNetAmount = Number(data.netAmount ?? data.amount) + ibsCbsTotal;
 
   pdf.rect(5, 5, 585, 832).lineWidth(1).stroke("#111111");
   shade(6, 6, 583, 34);
   const logoPath = path.join(process.cwd(), "public", "assets", "nfse-logo.png");
   if (existsSync(logoPath)) pdf.image(logoPath, 12, 11, { width: 116, height: 23 });
-  drawText("DANFSe v2.0", 215, 12, 165, { bold: true, size: 9, align: "center" });
-  drawText("Documento Auxiliar da NFS-e", 205, 24, 185, { bold: true, size: 8.5, align: "center" });
-  drawText(`Municipio: ${text(data.city)}`, 444, 12, 139, { size: 6.6 });
+  drawText("DANFSe v2.0", 215, 11, 165, { bold: true, size: 9, align: "center" });
+  drawText("Documento Auxiliar da NFS-e", 205, 23, 185, { bold: true, size: 8.5, align: "center" });
+  drawText(`Municipio: ${text(data.city)}${data.provider.uf ? ` - ${data.provider.uf}` : ""}`, 444, 11, 139, { size: 6.6 });
   drawText(`Ambiente Gerador: ${text(data.generator)}`, 444, 21, 139, { size: 5.6 });
   drawText(`Tipo de Ambiente: ${text(data.environment)}`, 444, 29, 139, { size: 5.6 });
   line(40);
 
-  field("CHAVE DE ACESSO DA NFS-e", data.accessKey, 0, 44, col * 3, { valueSize: 6.5 });
+  field("CHAVE DE ACESSO DA NFS-e", data.accessKey, 0, 43, col * 3, { valueSize: 6.5 });
   const qrUrl = `https://www.nfse.gov.br/ConsultaPublica/?tpc=1&chave=${encodeURIComponent(data.accessKey)}`;
   const qr = await QRCode.toBuffer(qrUrl, { errorCorrectionLevel: "M", margin: 0, width: 200 });
   pdf.image(qr, 493, 45, { width: 45, height: 45 });
-  field("NUMERO DA NFS-e", data.number, 0, 65);
-  field("COMPETENCIA DA NFS-e", dateBr(data.competence, true), 1, 65);
-  field("DATA E HORA DA EMISSAO", dateBr(data.issuedAt), 2, 65);
-  field("NUMERO DA DPS", data.dpsNumber, 0, 85);
-  field("SERIE DA DPS", data.dpsSeries, 1, 85);
-  field("EMISSAO DA DPS", dateBr(data.dpsIssuedAt), 2, 85);
+  field("NUMERO DA NFS-e", data.number, 0, 63);
+  field("COMPETENCIA DA NFS-e", dateBr(data.competence, true), 1, 63);
+  field("DATA E HORA DA EMISSAO DA NFS-e", dateBr(data.issuedAt), 2, 63);
+  field("NUMERO DA DPS", data.dpsNumber, 0, 83);
+  field("SERIE DA DPS", data.dpsSeries, 1, 83);
+  field("DATA E HORA DA EMISSAO DA DPS", dateBr(data.dpsIssuedAt), 2, 83);
   shade(left, 101, col, 24);
   field("EMITENTE DA NFS-e", data.issuerType === "1" ? "Prestador" : data.issuerType, 0, 104);
   field("SITUACAO DA NFS-e", data.status === "100" ? "NFS-e gerada" : data.status, 1, 104);
+  field("FINALIDADE", data.purpose, 2, 104);
   drawText("A autenticidade desta NFS-e pode ser verificada pelo QR Code ou pela chave no portal nacional.", 447, 94, 135, { size: 5.5, height: 28, align: "center" });
   line(126);
 
   section("PRESTADOR / FORNECEDOR", 126);
   field("CNPJ / CPF / NIF", documentNumber(data.provider.document), 1, 126);
-  field("Inscricao Municipal", data.provider.municipalRegistration, 2, 126);
+  field("Indicador Municipal (Inscricao)", data.provider.municipalRegistration, 2, 126);
   field("Telefone", data.provider.phone, 3, 126);
   field("Nome / Nome Empresarial", data.provider.name, 0, 145, col * 2);
-  field("Municipio / UF", `${text(data.provider.city)} / ${text(data.provider.uf)}`, 2, 145);
+  field("Municipio / Sigla UF", `${text(data.provider.city)} / ${text(data.provider.uf)}`, 2, 145);
   field("Codigo IBGE / CEP", `${text(data.provider.cityCode)} / ${cep(data.provider.cep)}`, 3, 145);
   field("Endereco", data.provider.line, 0, 164, col * 3);
   field("E-mail", data.provider.email, 3, 164);
-  field("Simples Nacional", simpleNationalLabels[data.simpleNational] || data.simpleNational, 0, 183);
-  field("Regime de apuracao pelo SN", data.simpleRegime, 1, 183, col * 3);
+  field("Simples Nacional na Data de Competencia", simpleNationalLabels[data.simpleNational] || data.simpleNational, 0, 183);
+  field("Regime de Apuracao Tributaria pelo SN", data.simpleRegime, 1, 183, col * 3);
   line(203);
 
   section("TOMADOR / ADQUIRENTE", 203);
   field("CNPJ / CPF / NIF", documentNumber(data.customer.document), 1, 203);
-  field("Inscricao Municipal", data.customer.municipalRegistration, 2, 203);
+  field("Indicador Municipal (Inscricao)", data.customer.municipalRegistration, 2, 203);
   field("Telefone", data.customer.phone, 3, 203);
   field("Nome / Nome Empresarial", data.customer.name, 0, 222, col * 2);
-  field("Municipio / UF", `${text(data.customer.city)} / ${text(data.customer.uf)}`, 2, 222);
+  field("Municipio / Sigla UF", `${text(data.customer.city)} / ${text(data.customer.uf)}`, 2, 222);
   field("Codigo IBGE / CEP", `${text(data.customer.cityCode)} / ${cep(data.customer.cep)}`, 3, 222);
   field("Endereco", data.customer.line, 0, 241, col * 3);
   field("E-mail", data.customer.email, 3, 241);
   line(261);
-  drawText("INTERMEDIARIO DA OPERACAO NAO IDENTIFICADO NA NFS-e", left + 3, 267, width - 6, { size: 6.4, align: "center" });
+  drawText("DESTINATARIO DA OPERACAO NAO IDENTIFICADO NA NFS-e", left + 3, 263, width - 6, { size: 6.4, align: "center" });
+  line(270);
+  drawText("INTERMEDIARIO DA OPERACAO NAO IDENTIFICADO NA NFS-e", left + 3, 272, width - 6, { size: 6.4, align: "center" });
   line(279);
 
   section("SERVICO PRESTADO", 279);
-  field("Codigo Tributacao Nacional / Municipal", `${serviceCode(data.service.code)} / ${text(data.service.municipalCode)}`, 1, 279);
+  field("Codigo de Tributacao Nacional/Municipal", `${serviceCode(data.service.code)} / ${text(data.service.municipalCode)}`, 1, 279);
   field("Codigo da NBS", nbs(data.service.nbs), 2, 279);
-  field("Local da prestacao / Codigo IBGE", `${text(data.service.city)} / ${text(data.service.cityCode)}`, 3, 279);
+  field("Local da Prestacao / Sigla UF / Pais", `${text(data.service.city)} / ${text(data.provider.uf)} / -`, 3, 279);
   drawText(data.service.taxDescription, left + 4, 300, width - 8, { size: 6.2, height: 10 });
-  drawText("Descricao do servico", left + 4, 314, width - 8, { bold: true, size: 5.8 });
-  drawText(data.service.description, left + 4, 323, width - 8, { size: 6.5, height: 55 });
+  drawText("Descricao do Servico", left + 4, 313, width - 8, { bold: true, size: 5.8 });
+  drawText(data.service.description, left + 4, 322, width - 8, { size: 6.5, height: 14 });
+  line(337);
+
+  section("TRIBUTACAO MUNICIPAL (ISSQN)", 337);
+  field("Tipo de Tributacao do ISSQN", issLabels[data.issType] || data.issType, 1, 337);
+  field("Municipio / Sigla UF / Pais de Incidencia do ISSQN", `${text(data.municipalTaxCity)} / ${text(data.provider.uf)} / -`, 2, 337, col * 2);
+  field("BC ISSQN", money(data.taxBase), 0, 357);
+  field("Aliquota Aplicada", percent(data.issRate), 1, 357);
+  field("Retencao do ISSQN", retentionLabels[data.issRetention] || data.issRetention, 2, 357);
+  field("ISSQN Apurado", money(data.issAmount), 3, 357);
   line(381);
 
-  section("TRIBUTACAO MUNICIPAL (ISSQN)", 381);
-  field("Tipo de tributacao", issLabels[data.issType] || data.issType, 1, 381);
-  field("Base de calculo", money(data.taxBase), 0, 401);
-  field("Aliquota aplicada", percent(data.issRate), 1, 401);
-  field("Retencao do ISSQN", retentionLabels[data.issRetention] || data.issRetention, 2, 401);
-  field("ISSQN apurado", money(data.issAmount), 3, 401);
+  section("TRIBUTACAO FEDERAL (EXCETO CBS)", 381);
+  field("IRRF", money(data.federal.irrf), 1, 381);
+  field("Contribuicao Previdenciaria - Retida", money(data.federal.socialSecurity), 2, 381);
+  field("Contribuicoes Sociais - Retidas", money(data.federal.socialContributions), 3, 381);
+  field("PIS - Debito Apuracao Propria", money(data.federal.pis), 0, 401);
+  field("COFINS - Debito Apuracao Propria", money(data.federal.cofins), 1, 401);
+  field("Descricao Contrib. Sociais - Retidas", data.federal.retainedDescription, 2, 401, col * 2);
   line(421);
 
-  section("VALOR TOTAL DA NFS-e", 421);
-  field("VALOR DA OPERACAO / SERVICO", money(data.amount), 1, 421);
-  field("VALOR LIQUIDO DA NFS-e", money(data.netAmount ?? data.amount), 2, 421, col * 2);
-  line(442);
+  section("TRIBUTACAO IBS/CBS", 421);
+  field("CST / cClassTrib", `${text(data.ibsCbs.cst)} / ${text(data.ibsCbs.taxClass)}`, 1, 421);
+  field(
+    "Indicador de Operacao / Codigo IBGE Incidencia / Municipio Incidencia / Sigla UF",
+    `${text(data.ibsCbs.operationIndicator)} / ${text(data.ibsCbs.incidenceCityCode)} / ${text(data.ibsCbs.incidenceCity)} / ${text(data.ibsCbs.incidenceUf)}`,
+    2,
+    421,
+    col * 2,
+    { valueSize: 5.8 }
+  );
+  field("Exclusoes e Reducoes da Base de Calculo", money(data.ibsCbs.exclusions ?? 0), 0, 441);
+  field("Base de Calculo Apos Exclusoes e Reducoes", money(data.ibsCbs.base), 1, 441);
+  field("Red. Aliquota IBS / Red. Aliquota CBS", `${percent(data.ibsCbs.ibsReduction)} / ${percent(data.ibsCbs.cbsReduction)}`, 2, 441);
+  field("Aliquota - IBS UF / IBS Mun", `${percent(data.ibsCbs.ibsStateRate)} / ${percent(data.ibsCbs.ibsCityRate)}`, 3, 441);
+  field("Aliq. Efetiva Municipal - IBS", percent(data.ibsCbs.ibsCityEffectiveRate), 0, 461);
+  field("Valor Apurado Municipal - IBS", money(data.ibsCbs.ibsCityAmount), 1, 461);
+  field("Aliq. Efetiva Estadual - IBS", percent(data.ibsCbs.ibsStateEffectiveRate), 2, 461);
+  field("Valor Apurado Estadual - IBS", money(data.ibsCbs.ibsStateAmount), 3, 461);
+  field("Valor Total Apurado - IBS", money(data.ibsCbs.ibsTotal), 0, 481);
+  field("Aliquota - CBS", percent(data.ibsCbs.cbsRate), 1, 481);
+  field("Aliquota Efetiva - CBS", percent(data.ibsCbs.cbsEffectiveRate), 2, 481);
+  field("Valor Total Apurado - CBS", money(data.ibsCbs.cbsTotal), 3, 481);
+  line(501);
 
-  section("TRIBUTOS APROXIMADOS - LEI 12.741/2012", 442);
-  field("Federais", percent(data.federalTax), 1, 442);
-  field("Estaduais", percent(data.stateTax), 2, 442);
-  field("Municipais", percent(data.municipalTax), 3, 442);
-  line(463);
+  section("VALOR TOTAL DA NFS-e", 501);
+  field("VALOR DA OPERACAO / SERVICO", money(data.amount), 1, 501);
+  field("Desconto Incondicionado", money(data.unconditionalDiscount), 2, 501);
+  field("Desconto Condicionado", money(data.conditionalDiscount), 3, 501);
+  field("Total das Retencoes (ISSQN / Federais)", money(data.retainedTotal), 0, 522);
+  field("VALOR LIQUIDO DA NFS-e", money(data.netAmount ?? data.amount), 1, 522);
+  field("Total do IBS/CBS", money(ibsCbsTotal), 2, 522);
+  shade(xs[3], 522, col, 23);
+  field("VALOR LIQUIDO DA NFS-e + IBS/CBS", money(finalNetAmount), 3, 522);
+  line(545);
 
-  drawText("INFORMACOES COMPLEMENTARES", left + 4, 468, width - 8, { bold: true, size: 6.4 });
-  drawText(data.complements, left + 4, 482, width - 8, { size: 6.4, height: 290 });
+  drawText("INFORMACOES COMPLEMENTARES", left + 4, 550, width - 8, { bold: true, size: 6.4 });
+  drawText(complementaryInformation, left + 4, 565, width - 8, { size: 6.4, height: 220 });
   pdf.rect(left, 796, width, 20).lineWidth(0.6).stroke("#111111");
-  field("NFS-e / CHAVE DE ACESSO", `${data.number} / ${data.accessKey}`, 0, 797, col * 4, { valueSize: 6.2 });
+  pdf.moveTo(xs[1], 796).lineTo(xs[1], 816).stroke();
+  pdf.moveTo(xs[2], 796).lineTo(xs[2], 816).stroke();
+  drawText("DATA CIENTIFICACAO:", left + 4, 798, col - 8, { bold: true, size: 5.7 });
+  drawText("IDENTIFICACAO E ASSINATURA", xs[1] + 4, 798, col - 8, { bold: true, size: 5.7 });
+  field("N° NFS-e / CHAVE NFS-e", `${data.number} / ${data.accessKey}`, 2, 796, col * 2, { valueSize: 6.2 });
 
   pdf.end();
   return finished;
 }
-

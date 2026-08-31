@@ -1,4 +1,4 @@
-import { NfseDeleteTestForm } from "@/components/fiscal/nfse-delete-test-form";
+import { NfseBatchQueue } from "@/components/fiscal/nfse-batch-queue";
 import { NfseProcessForm } from "@/components/fiscal/nfse-process-form";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -43,7 +43,8 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   invalid: { kind: "error", text: "Documento fiscal invalido." },
   not_found: { kind: "error", text: "Documento fiscal nao encontrado." },
   profile_error: { kind: "error", text: "Seu usuario ainda nao esta vinculado a uma empresa." },
-  error: { kind: "error", text: "Nao foi possivel processar a NFS-e agora." }
+  error: { kind: "error", text: "Nao foi possivel processar a NFS-e agora." },
+  batch_submitted: { kind: "success", text: "Lote de NFS-e processado. Confira os status individuais." }
 };
 
 function relation<T>(item: Relation<T>) {
@@ -90,12 +91,13 @@ export default async function EmissaoNfsePage({ searchParams }: EmissaoNfsePageP
   const params = await searchParams;
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
-  const [{ data: profile }, { data: canEdit }] = user
+  const [{ data: profile }, { data: canEdit }, { data: canEmit }] = user
     ? await Promise.all([
       supabase.from("profiles").select("company_id").eq("id", user.id).maybeSingle(),
-      supabase.rpc("app_has_permission", { permission_module: "fiscal.nfse", permission_action: "editar" })
+      supabase.rpc("app_has_permission", { permission_module: "fiscal.nfse", permission_action: "editar" }),
+      supabase.rpc("app_has_permission", { permission_module: "fiscal.nfse", permission_action: "emitir" })
     ])
-    : [{ data: null }, { data: false }];
+    : [{ data: null }, { data: false }, { data: false }];
   const { data: documents } = profile?.company_id
     ? await supabase
       .from("nfse_documents")
@@ -161,55 +163,28 @@ export default async function EmissaoNfsePage({ searchParams }: EmissaoNfsePageP
             </div>
             {selected.rejection_message ? <div className="form-error">{selected.rejection_message}</div> : null}
             <div className="table-actions">
-              {canReview(selected.status) ? <NfseProcessForm documentId={selected.id} realProduction={realProduction} /> : null}
+              {canEmit && canReview(selected.status) ? <NfseProcessForm documentId={selected.id} realProduction={realProduction} /> : null}
               <a className="ghost-button compact-button button-link" href="/fiscal/emissao-nfse">Fechar conferencia</a>
             </div>
           </section>
         );
       })() : null}
 
-      <section className="table-panel">
-        <h2>Fila fiscal</h2>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Entrada</th>
-                <th>Tomador</th>
-                <th>Competencia</th>
-                <th>Valor</th>
-                <th>Status fiscal</th>
-                <th>Acoes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {queueDocuments.length ? queueDocuments.map((document) => (
-                <tr key={document.id}>
-                  <td>{getEntry(document)?.description || "-"}</td>
-                  <td>{getClient(document)?.legal_name || "-"}</td>
-                  <td>{document.competence}</td>
-                  <td>{formatMoney(document.service_amount)}</td>
-                  <td>
-                    <StatusBadge tone={getTone(document.status)}>{document.status}</StatusBadge>
-                    {document.rejection_message ? <div className="table-error-detail">{document.rejection_message}</div> : null}
-                  </td>
-                  <td>
-                    <RowActionsMenu label={`Acoes da NFS-e de ${getClient(document)?.legal_name || "cliente"}`}>
-                      <a className="primary-button button-link compact-button" href={`/fiscal/emissao-nfse?documentId=${document.id}`}>Conferir</a>
-                      {document.status === "rejeitada" && getContractId(document) ? (
-                        <a className="ghost-button button-link compact-button" href={`/cadastros/contratos/${getContractId(document)}/editar`}>Corrigir contrato</a>
-                      ) : null}
-                      {canEdit ? <NfseDeleteTestForm documentId={document.id} /> : null}
-                    </RowActionsMenu>
-                  </td>
-                </tr>
-              )) : (
-                <tr><td colSpan={6}>Nenhuma nota em fila de emissao.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <NfseBatchQueue
+        documents={queueDocuments.map((document) => ({
+          id: document.id,
+          description: getEntry(document)?.description || "-",
+          clientName: getClient(document)?.legal_name || "-",
+          competence: document.competence,
+          value: formatMoney(document.service_amount),
+          status: document.status,
+          rejectionMessage: document.rejection_message,
+          contractId: getContractId(document)
+        }))}
+        canEdit={Boolean(canEdit)}
+        canEmit={Boolean(canEmit)}
+        realProduction={realProduction}
+      />
 
       <section className="table-panel">
         <div className="report-results-header">

@@ -41,3 +41,31 @@ test("empacota as fontes padrao do PDFKit nas rotas que geram DANFSe", () => {
   }
   assert.match(config, /node_modules\/pdfkit\/js\/data\/\*\.afm/);
 });
+
+test("DANFSe segue as secoes fiscais do layout nacional v2", () => {
+  const source = readFileSync(new URL("../src/lib/pdf/government-danfse.ts", import.meta.url), "utf8");
+  for (const section of [
+    "DESTINATARIO DA OPERACAO",
+    "TRIBUTACAO MUNICIPAL (ISSQN)",
+    "TRIBUTACAO FEDERAL (EXCETO CBS)",
+    "TRIBUTACAO IBS/CBS",
+    "VALOR TOTAL DA NFS-e",
+    "DATA CIENTIFICACAO",
+    "IDENTIFICACAO E ASSINATURA"
+  ]) {
+    assert.match(source, new RegExp(section.replace(/[()]/g, "\\$&")));
+  }
+});
+
+test("fila fiscal permite selecionar e emitir varias notas", () => {
+  const component = readFileSync(new URL("../src/components/fiscal/nfse-batch-queue.tsx", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../src/app/(dashboard)/fiscal/emissao-nfse/page.tsx", import.meta.url), "utf8");
+  const issuedPage = readFileSync(new URL("../src/app/(dashboard)/fiscal/notas-emitidas/page.tsx", import.meta.url), "utf8");
+  assert.match(component, /Selecionar todas as notas da fila/);
+  assert.match(component, /Emitir selecionadas/);
+  assert.match(component, /selectedIds\.length/);
+  assert.match(component, /\/api\/fiscal\/nfse\/emitir/);
+  assert.match(component, /productionConfirmed/);
+  assert.match(page, /permission_action: "emitir"/);
+  assert.match(issuedPage, /Atualizar PDF/);
+});
