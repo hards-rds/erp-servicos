@@ -3,6 +3,7 @@
 import { Pencil, X } from "lucide-react";
 import { useRef } from "react";
 import { RowActionsMenu } from "@/components/ui/row-actions-menu";
+import { IbsCbsServiceFields } from "@/components/fiscal/ibs-cbs-fields";
 
 type ServiceTypeOption = { value: string; label: string };
 
@@ -78,6 +79,7 @@ export function CatalogServiceActions({
               <label>Codigo NBS<input name="nbsCode" inputMode="numeric" pattern="[0-9]{9}" maxLength={9} defaultValue={fiscalValue("nbsCode")} /></label>
             </div>
             <label className="checkbox-row"><input type="checkbox" name="retainIss" defaultChecked={service.fiscalServiceData?.retainIss === true} /><span>Reter ISSQN nesta operacao</span></label>
+            <IbsCbsServiceFields data={service.fiscalServiceData} />
           </fieldset>
           <label>Observacoes<textarea name="notes" defaultValue={service.notes || ""} /></label>
           <div className="dialog-actions">

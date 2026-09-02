@@ -1,3 +1,5 @@
+import { buildNfseIbsCbsXml, inferTaxRegimeCode, isIbsCbsRequired, validateIbsCbsServiceData } from "../../domains/fiscal/ibs-cbs.ts";
+
 type Row = Record<string, unknown>;
 
 export type NfseNationalInput = {
@@ -177,6 +179,9 @@ export function buildDpsXml(input: NfseNationalInput) {
   const address = input.client.address || {};
   const zipCode = onlyDigits(addressValue(address, "zipCode"));
   const clientCityCode = onlyDigits(addressValue(address, "cityCode"));
+  const taxRegimeCode = inferTaxRegimeCode(emitterFiscalData);
+  const ibsCbsRequired = isIbsCbsRequired({ documentKind: "nfse", environment, taxRegimeCode });
+  const ibsCbsXml = buildNfseIbsCbsXml(fiscalData, xml);
 
   return {
     id: dpsId,
@@ -191,6 +196,8 @@ export function buildDpsXml(input: NfseNationalInput) {
     federalTotalTaxRate,
     stateTotalTaxRate,
     municipalTotalTaxRate,
+    taxRegimeCode,
+    ibsCbsRequired,
     xml: `<?xml version="1.0" encoding="UTF-8"?>
 <DPS xmlns="http://www.sped.fazenda.gov.br/nfse" versao="${xml(layoutVersion)}">
   <infDPS Id="${xml(dpsId)}">
@@ -256,6 +263,7 @@ export function buildDpsXml(input: NfseNationalInput) {
         </totTrib>
       </trib>
     </valores>
+${ibsCbsXml}
   </infDPS>
 </DPS>`
   };
@@ -278,6 +286,8 @@ export function validateDpsInput(input: NfseNationalInput) {
   }
   if (dps.serviceCode.length !== 6) errors.push("Codigo nacional de servico NFS-e obrigatorio com 6 digitos.");
   if (dps.nbsCode && !/^\d{9}$/.test(dps.nbsCode)) errors.push("Codigo NBS deve conter 9 digitos.");
+  if (dps.ibsCbsRequired && !dps.taxRegimeCode) errors.push("Codigo do regime tributario (CRT) obrigatorio em Configuracoes Gerais.");
+  errors.push(...validateIbsCbsServiceData(input.fiscalData, dps.ibsCbsRequired));
   if (Number(input.entry.net_amount) <= 0) errors.push("Valor da nota deve ser maior que zero.");
 
   return { dps, errors };

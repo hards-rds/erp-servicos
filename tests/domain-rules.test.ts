@@ -179,7 +179,14 @@ test("separa emitente, tomador e servico ao montar a DPS", () => {
       competence: "2026-08",
       net_amount: 100
     },
-    fiscalData: { serviceCode: "010701", nbsCode: "123456789" }
+    fiscalData: {
+      serviceCode: "010701",
+      nbsCode: "123456789",
+      ibsCbsCst: "000",
+      ibsCbsTaxClass: "000001",
+      ibsCbsOperationIndicator: "100101",
+      ibsCbsFinalConsumer: false
+    }
   });
 
   assert.match(dps.xml, /<CPF>52998224725<\/CPF>/);
@@ -194,6 +201,7 @@ test("separa emitente, tomador e servico ao montar a DPS", () => {
   assert.match(dps.xml, /<trib>[\s\S]*<tribMun>[\s\S]*<\/tribMun>[\s\S]*<totTrib>[\s\S]*<pTotTrib>[\s\S]*<pTotTribFed>13\.45<\/pTotTribFed>[\s\S]*<pTotTribEst>0\.00<\/pTotTribEst>[\s\S]*<pTotTribMun>3\.05<\/pTotTribMun>[\s\S]*<\/pTotTrib>[\s\S]*<\/totTrib>[\s\S]*<\/trib>/);
   assert.doesNotMatch(dps.xml, /<indTotTrib>/);
   assert.doesNotMatch(dps.xml, /<pTotTribSN>/);
+  assert.match(dps.xml, /<\/valores>\s*<IBSCBS>[\s\S]*<CST>000<\/CST>[\s\S]*<cClassTrib>000001<\/cClassTrib>[\s\S]*<\/IBSCBS>\s*<\/infDPS>/);
 });
 
 test("valida o NBS da DPS com nove digitos quando informado", () => {

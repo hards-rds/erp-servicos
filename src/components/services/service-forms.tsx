@@ -1,4 +1,5 @@
 import type { ServiceSegment } from "@/domains/services/catalog";
+import { IbsCbsServiceFields } from "@/components/fiscal/ibs-cbs-fields";
 
 export type ServiceFormValue = {
   id: string;
@@ -51,6 +52,7 @@ export function CatalogServiceForm({ typeOptions }: { typeOptions: { value: stri
           <label>Codigo NBS<input name="nbsCode" inputMode="numeric" pattern="[0-9]{9}" maxLength={9} placeholder="Ex.: 123456789" /></label>
         </div>
         <label className="checkbox-row"><input type="checkbox" name="retainIss" /><span>Reter ISSQN nesta operacao</span></label>
+        <IbsCbsServiceFields />
       </fieldset>
       <label>Observacoes<textarea name="notes" placeholder="Dados internos do servico" /></label>
       <div className="page-form-actions">
@@ -133,6 +135,7 @@ export function ServiceRecordForm({ clients, sellers, segment, typeOptions, serv
           <label>Codigo NBS<input name="nbsCode" inputMode="numeric" pattern="[0-9]{9}" maxLength={9} defaultValue={getString(details, "nbsCode")} /></label>
         </div>
         <label className="checkbox-row"><input type="checkbox" name="retainIss" defaultChecked={details.retainIss === true} /><span>Reter ISSQN nesta operacao</span></label>
+        <IbsCbsServiceFields data={details} />
       </fieldset>
       <label>Observacoes<textarea name="notes" defaultValue={service?.notes || ""} placeholder="Detalhes internos sobre este atendimento" /></label>
       <div className="page-form-actions">

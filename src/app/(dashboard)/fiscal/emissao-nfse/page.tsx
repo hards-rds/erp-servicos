@@ -158,6 +158,8 @@ export default async function EmissaoNfsePage({ searchParams }: EmissaoNfsePageP
                   <tr><th>Servico</th><td>{entry?.description || "-"}</td><th>Valor</th><td>{formatMoney(selected.service_amount)}</td></tr>
                   <tr><th>Codigo nacional</th><td>{String(fiscalData.serviceCode || "-")}</td><th>Codigo municipal</th><td>{String(fiscalData.municipalServiceCode || "-")}</td></tr>
                   <tr><th>NBS</th><td>{String(fiscalData.nbsCode || "-")}</td><th>Retencao ISSQN</th><td>{fiscalData.issWithheld ? "Sim" : "Nao"}</td></tr>
+                  <tr><th>CST IBS/CBS</th><td>{String(fiscalData.ibsCbsCst || "-")}</td><th>Classificacao tributaria</th><td>{String(fiscalData.ibsCbsTaxClass || "-")}</td></tr>
+                  <tr><th>Indicador da operacao</th><td>{String(fiscalData.ibsCbsOperationIndicator || "-")}</td><th>Consumidor final</th><td>{fiscalData.ibsCbsFinalConsumer ? "Sim" : "Nao"}</td></tr>
                 </tbody>
               </table>
             </div>

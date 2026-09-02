@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { serviceDeletionBlock } from "@/domains/services/deletion";
 import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
 import { resolveSellerCommissionRate, syncSourceCommission } from "@/server/services/comissoes-service";
+import { collectIbsCbsServiceData, validateIbsCbsServiceData } from "@/domains/fiscal/ibs-cbs";
 
 function readString(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
@@ -63,13 +64,15 @@ function collectFiscalServiceData(formData: FormData, segment: string) {
     serviceCode: readString(formData, "serviceCode"),
     municipalServiceCode: readString(formData, "municipalServiceCode"),
     nbsCode: readString(formData, "nbsCode"),
-    retainIss: formData.get("retainIss") === "on"
+    retainIss: formData.get("retainIss") === "on",
+    ...collectIbsCbsServiceData(formData)
   };
 }
 
 function hasValidFiscalCodes(fiscalData: ReturnType<typeof collectFiscalServiceData>) {
   if (fiscalData.serviceCode && !/^\d{6}$/.test(fiscalData.serviceCode)) return false;
-  return !fiscalData.nbsCode || /^\d{9}$/.test(fiscalData.nbsCode);
+  if (fiscalData.nbsCode && !/^\d{9}$/.test(fiscalData.nbsCode)) return false;
+  return validateIbsCbsServiceData(fiscalData, false).length === 0;
 }
 
 async function syncReceivableFromService(input: {

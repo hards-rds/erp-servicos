@@ -119,6 +119,7 @@ export function ContractForm({
           <input type="checkbox" name="autoGenerateCharge" defaultChecked={contract?.auto_generate_charge === true} />
           <span>Emitir cobranca quando o Banco Inter estiver ativo</span>
         </label>
+        <IbsCbsServiceFields data={fiscal} />
       </fieldset>
       <fieldset className="checkbox-panel">
         <legend>Servico na NFS-e (opcional)</legend>
@@ -176,3 +177,4 @@ export function ContractForm({
     </form>
   );
 }
+import { IbsCbsServiceFields } from "@/components/fiscal/ibs-cbs-fields";

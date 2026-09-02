@@ -189,6 +189,12 @@ export async function POST(request: NextRequest) {
       name: companyName,
       document: companyDocument || null,
       service_segment: serviceSegment,
+      fiscal_settings: {
+        taxRegimeCode: "",
+        ibsStateRate: "0.10",
+        ibsMunicipalRate: "0.00",
+        cbsRate: "0.90"
+      },
       active: true
     })
     .select("id")

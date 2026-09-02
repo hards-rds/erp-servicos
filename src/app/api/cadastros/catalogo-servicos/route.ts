@@ -3,6 +3,7 @@ import { serviceTypeOptions, type ServiceSegment } from "@/domains/services/cata
 import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
 import { isPlanLimitError } from "@/domains/billing/saas-plans";
 import { canCreateTenantResource } from "@/server/services/saas-plan-service";
+import { collectIbsCbsServiceData, validateIbsCbsServiceData } from "@/domains/fiscal/ibs-cbs";
 
 function readString(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
@@ -24,13 +25,15 @@ function collectFiscalServiceData(formData: FormData) {
     serviceCode: readString(formData, "serviceCode"),
     municipalServiceCode: readString(formData, "municipalServiceCode"),
     nbsCode: readString(formData, "nbsCode"),
-    retainIss: formData.get("retainIss") === "on"
+    retainIss: formData.get("retainIss") === "on",
+    ...collectIbsCbsServiceData(formData)
   };
 }
 
 function hasValidFiscalCodes(fiscalData: ReturnType<typeof collectFiscalServiceData>) {
   if (fiscalData.serviceCode && !/^\d{6}$/.test(fiscalData.serviceCode)) return false;
-  return !fiscalData.nbsCode || /^\d{9}$/.test(fiscalData.nbsCode);
+  if (fiscalData.nbsCode && !/^\d{9}$/.test(fiscalData.nbsCode)) return false;
+  return validateIbsCbsServiceData(fiscalData, false).length === 0;
 }
 
 export async function POST(request: NextRequest) {

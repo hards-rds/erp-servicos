@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/layout/page-header";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { inferTaxRegimeCode } from "@/domains/fiscal/ibs-cbs";
 
 type GeraisPageProps = {
   searchParams?: Promise<{ status?: string }>;
@@ -8,7 +9,7 @@ type GeraisPageProps = {
 const statusMessages: Record<string, { kind: "success" | "error"; text: string }> = {
   saved: { kind: "success", text: "Configuracoes gerais salvas com sucesso." },
   invalid: { kind: "error", text: "Revise o nome da empresa e o segmento de atuacao." },
-  fiscal_invalid: { kind: "error", text: "Revise os dados fiscais do emitente, incluindo municipio, regime tributario e percentuais aproximados dos tributos." },
+  fiscal_invalid: { kind: "error", text: "Revise os dados fiscais do emitente, incluindo municipio, regime tributario, IBS, CBS e percentuais aproximados." },
   forbidden: { kind: "error", text: "Apenas usuarios master podem alterar as configuracoes gerais." },
   profile_error: { kind: "error", text: "Seu usuario ainda nao esta vinculado a uma empresa." },
   error: { kind: "error", text: "Nao foi possivel salvar as configuracoes agora." }
@@ -173,6 +174,35 @@ export default async function GeraisPage({ searchParams }: GeraisPageProps) {
                 />
               </label>
             </div>
+          </fieldset>
+          <fieldset className="checkbox-panel">
+            <legend>Reforma Tributaria (IBS/CBS)</legend>
+            <p className="muted">Parametros do emitente aplicados aos novos grupos fiscais da NFS-e e do CT-e.</p>
+            <div className="form-grid">
+              <label>
+                Codigo do regime tributario (CRT)
+                <select name="taxRegimeCode" defaultValue={inferTaxRegimeCode(fiscalSettings)} required disabled={!isMaster}>
+                  <option value="">Selecione</option>
+                  <option value="1">1 - Simples Nacional</option>
+                  <option value="2">2 - Simples Nacional, excesso de sublimite</option>
+                  <option value="3">3 - Regime Normal</option>
+                  <option value="4">4 - MEI</option>
+                </select>
+              </label>
+              <label>
+                IBS estadual (%)
+                <input name="ibsStateRate" inputMode="decimal" defaultValue={fiscalString(fiscalSettings, "ibsStateRate", "0.10")} required disabled={!isMaster} />
+              </label>
+              <label>
+                IBS municipal (%)
+                <input name="ibsMunicipalRate" inputMode="decimal" defaultValue={fiscalString(fiscalSettings, "ibsMunicipalRate", "0.00")} required disabled={!isMaster} />
+              </label>
+              <label>
+                CBS (%)
+                <input name="cbsRate" inputMode="decimal" defaultValue={fiscalString(fiscalSettings, "cbsRate", "0.90")} required disabled={!isMaster} />
+              </label>
+            </div>
+            <p className="muted">Aliquotas iniciais de 2026. Revise estes valores quando houver alteracao legal ou tratamento tributario especifico.</p>
           </fieldset>
           <button className="primary-button" type="submit" disabled={!isMaster}>Salvar</button>
         </form>

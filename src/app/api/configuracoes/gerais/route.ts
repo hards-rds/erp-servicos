@@ -7,6 +7,7 @@ const segments = new Set(["tecnologia", "otica", "escola_futebol", "transportado
 const simpleNationalStatuses = new Set(["1", "2", "3"]);
 const assessmentRegimes = new Set(["1", "2", "3"]);
 const specialTaxRegimes = new Set(["0", "1", "2", "3", "4", "5", "6", "9"]);
+const taxRegimeCodes = new Set(["1", "2", "3", "4"]);
 
 function readString(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
@@ -38,6 +39,10 @@ export async function POST(request: NextRequest) {
   const stateTotalTaxRate = readPercentage(formData, "stateTotalTaxRate");
   const municipalTotalTaxRate = readPercentage(formData, "municipalTotalTaxRate");
   const specialTaxRegime = readString(formData, "specialTaxRegime") || "0";
+  const taxRegimeCode = readString(formData, "taxRegimeCode");
+  const ibsStateRate = readPercentage(formData, "ibsStateRate");
+  const ibsMunicipalRate = readPercentage(formData, "ibsMunicipalRate");
+  const cbsRate = readPercentage(formData, "cbsRate");
 
   if (!name || !segments.has(serviceSegment)) {
     return NextResponse.redirect(new URL("/configuracoes/gerais?status=invalid", request.url), 303);
@@ -47,14 +52,23 @@ export async function POST(request: NextRequest) {
     !/^\d{7}$/.test(cityCode)
     || !simpleNationalStatuses.has(simpleNationalStatus)
     || !specialTaxRegimes.has(specialTaxRegime)
+    || !taxRegimeCodes.has(taxRegimeCode)
     || (simpleNationalStatus === "3" && !assessmentRegimes.has(simpleNationalAssessmentRegime))
-    || [federalTotalTaxRate, stateTotalTaxRate, municipalTotalTaxRate]
+    || [federalTotalTaxRate, stateTotalTaxRate, municipalTotalTaxRate, ibsStateRate, ibsMunicipalRate, cbsRate]
       .some((rate) => !Number.isFinite(rate) || rate < 0 || rate >= 100)
   ) {
     return NextResponse.redirect(new URL("/configuracoes/gerais?status=fiscal_invalid", request.url), 303);
   }
 
   const service = createServiceClient();
+  const { data: existingCompany } = await service
+    .from("companies")
+    .select("fiscal_settings")
+    .eq("id", profile.company_id)
+    .maybeSingle();
+  const existingFiscalSettings = existingCompany?.fiscal_settings && typeof existingCompany.fiscal_settings === "object"
+    ? existingCompany.fiscal_settings as Record<string, unknown>
+    : {};
   const { error } = await service
     .from("companies")
     .update({
@@ -62,6 +76,7 @@ export async function POST(request: NextRequest) {
       document: document || null,
       service_segment: serviceSegment,
       fiscal_settings: {
+        ...existingFiscalSettings,
         cityCode,
         municipalRegistration,
         series,
@@ -70,7 +85,11 @@ export async function POST(request: NextRequest) {
         federalTotalTaxRate: federalTotalTaxRate.toFixed(2),
         stateTotalTaxRate: stateTotalTaxRate.toFixed(2),
         municipalTotalTaxRate: municipalTotalTaxRate.toFixed(2),
-        specialTaxRegime
+        specialTaxRegime,
+        taxRegimeCode,
+        ibsStateRate: ibsStateRate.toFixed(2),
+        ibsMunicipalRate: ibsMunicipalRate.toFixed(2),
+        cbsRate: cbsRate.toFixed(2)
       },
       updated_at: new Date().toISOString()
     })
