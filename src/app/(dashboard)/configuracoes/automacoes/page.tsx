@@ -1,14 +1,17 @@
 import { PageHeader } from "@/components/layout/page-header";
 import { MetricCard } from "@/components/ui/metric-card";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { CompetenceFilter } from "@/components/ui/competence-filter";
+import { resolveCompetence } from "@/lib/dates/competence";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-type PageProps = { searchParams?: Promise<{ status?: string; processed?: string; partial?: string; failed?: string; alerts?: string }> };
+type PageProps = { searchParams?: Promise<{ status?: string; processed?: string; partial?: string; failed?: string; alerts?: string; competence?: string }> };
 type RunRow = { id: string; source_type: "contract" | "school_enrollment"; source_id: string; competence: string; status: string; error_message: string | null; started_at: string; finished_at: string | null; result: { warnings?: string[] } | null };
 function dateTime(value: string | null) { return value ? new Date(value).toLocaleString("pt-BR") : "-"; }
 
 export default async function AutomationsPage({ searchParams }: PageProps) {
   const params = await searchParams;
+  const competence = resolveCompetence(params?.competence);
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   const { data: profile } = user ? await supabase.from("profiles").select("company_id").eq("id", user.id).maybeSingle() : { data: null };
@@ -19,7 +22,7 @@ export default async function AutomationsPage({ searchParams }: PageProps) {
     supabase.from("contracts").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("status", "ativo").eq("auto_issue_nfse", true),
     supabase.from("contracts").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("status", "ativo").eq("auto_generate_charge", true),
     supabase.from("school_enrollments").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("status", "ativa").eq("auto_generate_financial", true),
-    supabase.from("recurrence_runs").select("id,source_type,source_id,competence,status,error_message,started_at,finished_at,result").eq("company_id", companyId).order("started_at", { ascending: false }).limit(50)
+    supabase.from("recurrence_runs").select("id,source_type,source_id,competence,status,error_message,started_at,finished_at,result").eq("company_id", companyId).eq("competence", competence).order("started_at", { ascending: false }).limit(500)
   ]) : [{ data: null }, { count: 0 }, { count: 0 }, { count: 0 }, { count: 0 }, { data: [] }];
   const runs = (runsResult.data || []) as RunRow[];
   const contractIds = runs.filter((run) => run.source_type === "contract").map((run) => run.source_id);
@@ -40,6 +43,7 @@ export default async function AutomationsPage({ searchParams }: PageProps) {
 
   return <>
     <PageHeader area="Configuracoes / Automacoes" title="Automacoes recorrentes" description="Controle competencias financeiras, fila fiscal e cobrancas da empresa ativa." action={<form action="/api/configuracoes/automacoes" method="post"><button className="primary-button" type="submit">Executar agora</button></form>} />
+    <CompetenceFilter value={competence} pathname="/configuracoes/automacoes" />
     {message ? <div className={message.kind === "success" ? "form-success" : "form-error"}>{message.text}</div> : null}
     <section className="metrics dashboard-metrics">
       <MetricCard label="Financeiro automatico" value={String(financialResult.count || 0)} detail="contratos ativos" />

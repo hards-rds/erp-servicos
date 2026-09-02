@@ -1,8 +1,10 @@
 import { PageHeader } from "@/components/layout/page-header";
 import { PayableActions } from "@/components/finance/payable-actions";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { CompetenceFilter } from "@/components/ui/competence-filter";
 import { canEditPayable, canMarkPayablePaid } from "@/domains/finance/payables";
 import { payableScheduleLabel, type PayableScheduleType } from "@/domains/finance/payable-schedules";
+import { resolveCompetence } from "@/lib/dates/competence";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type PayableRow = {
@@ -23,7 +25,7 @@ type PayableRow = {
 };
 
 type SaidasPageProps = {
-  searchParams?: Promise<{ status?: string }>;
+  searchParams?: Promise<{ status?: string; competence?: string }>;
 };
 
 const statusMessages: Record<string, { kind: "success" | "error"; text: string }> = {
@@ -81,6 +83,7 @@ function getSeries(payable: PayableRow) {
 
 export default async function SaidasPage({ searchParams }: SaidasPageProps) {
   const params = await searchParams;
+  const competence = resolveCompetence(params?.competence);
   const supabase = await createServerSupabaseClient();
   const {
     data: { user }
@@ -100,6 +103,7 @@ export default async function SaidasPage({ searchParams }: SaidasPageProps) {
         .from("payables")
         .select("id,vendor_name,category,description,competence,due_date,paid_at,amount,payment_method,status,series_id,installment_number,installment_total,payable_series(kind,active)")
         .eq("company_id", profile.company_id)
+        .eq("competence", competence)
         .order("due_date", { ascending: true })
         .order("created_at", { ascending: true })
         .limit(500),
@@ -139,6 +143,7 @@ export default async function SaidasPage({ searchParams }: SaidasPageProps) {
         description="Despesas, fornecedores, aprovacao, pagamento e conciliacao."
         action={<a className="primary-button button-link" href="/financeiro/saidas/nova">Nova saida</a>}
       />
+      <CompetenceFilter value={competence} pathname="/financeiro/saidas" />
       {message ? <div className={message.kind === "success" ? "form-success" : "form-error"}>{message.text}</div> : null}
       <section className="table-panel">
         <h2>Contas a pagar</h2>

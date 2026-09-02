@@ -1,9 +1,11 @@
 import { PageHeader } from "@/components/layout/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { CompetenceFilter } from "@/components/ui/competence-filter";
+import { competenceDateRange, resolveCompetence } from "@/lib/dates/competence";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type EstoquePageProps = {
-  searchParams?: Promise<{ status?: string }>;
+  searchParams?: Promise<{ status?: string; competence?: string }>;
 };
 
 type ProductRow = {
@@ -65,6 +67,8 @@ function getStockTone(product: ProductRow) {
 
 export default async function EstoquePage({ searchParams }: EstoquePageProps) {
   const params = await searchParams;
+  const competence = resolveCompetence(params?.competence);
+  const range = competenceDateRange(competence);
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   const { data: profile } = user
@@ -82,6 +86,8 @@ export default async function EstoquePage({ searchParams }: EstoquePageProps) {
         .from("stock_movements")
         .select("id,movement_date,type,quantity,reason,products(name,unit)")
         .eq("company_id", profile.company_id)
+        .gte("movement_date", range.start)
+        .lt("movement_date", range.next)
         .order("movement_date", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(50)
@@ -139,6 +145,7 @@ export default async function EstoquePage({ searchParams }: EstoquePageProps) {
             </table>
           </div>
       </section>
+      <CompetenceFilter value={competence} pathname="/operacao/estoque" />
       <section className="table-panel">
           <h2>Ultimas movimentacoes</h2>
           <div className="table-wrap">

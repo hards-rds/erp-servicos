@@ -2,11 +2,13 @@ import { InterChargeActions } from "@/components/finance/inter-charge-actions";
 import { PageHeader } from "@/components/layout/page-header";
 import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { CompetenceFilter } from "@/components/ui/competence-filter";
+import { resolveCompetence } from "@/lib/dates/competence";
 import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
 
-type PageProps = { searchParams?: Promise<{ status?: string }> };
+type PageProps = { searchParams?: Promise<{ status?: string; competence?: string }> };
 
-type EntryRelation = { id: string; description: string; due_date: string; net_amount: number | string; clients: { legal_name: string } | { legal_name: string }[] | null };
+type EntryRelation = { id: string; description: string; competence: string; due_date: string; net_amount: number | string; clients: { legal_name: string } | { legal_name: string }[] | null };
 type ChargeRow = {
   id: string;
   external_id: string | null;
@@ -52,6 +54,7 @@ function getTone(status: string) {
 
 export default async function BoletosCobrancasPage({ searchParams }: PageProps) {
   const params = await searchParams;
+  const competence = resolveCompetence(params?.competence);
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   const { data: profile } = user
@@ -61,11 +64,12 @@ export default async function BoletosCobrancasPage({ searchParams }: PageProps) 
   const [{ data: charges }, { data: entries }, { data: interCredential }] = profile?.company_id
     ? await Promise.all([
       supabase.from("boleto_charges")
-        .select("id,external_id,status,digitable_line,pix_qr_code,rejection_message,last_synced_at,financial_entries(id,description,due_date,net_amount,clients(legal_name))")
-        .eq("company_id", profile.company_id).order("created_at", { ascending: false }).limit(100),
+        .select("id,external_id,status,digitable_line,pix_qr_code,rejection_message,last_synced_at,financial_entries!inner(id,description,competence,due_date,net_amount,clients(legal_name))")
+        .eq("company_id", profile.company_id).eq("financial_entries.competence", competence).order("created_at", { ascending: false }).limit(500),
       supabase.from("financial_entries")
         .select("id,description,due_date,net_amount,status,clients(legal_name)")
         .eq("company_id", profile.company_id)
+        .eq("competence", competence)
         .in("status", ["previsto", "emitido", "aguardando_pagamento", "vencido"])
         .order("due_date").limit(100),
       service.from("api_credentials").select("id,environment,last_test_status").eq("company_id", profile.company_id).eq("provider", "banco_inter").eq("active", true).maybeSingle()
@@ -84,6 +88,7 @@ export default async function BoletosCobrancasPage({ searchParams }: PageProps) 
         description="Cobrancas Boleto com Pix, retorno bancario e baixa automatica pelo Banco Inter."
         action={<a className="ghost-button button-link" href="/configuracoes/apis">Configurar Inter</a>}
       />
+      <CompetenceFilter value={competence} pathname="/financeiro/boletos-cobrancas" />
       {message ? <div className={message.kind === "success" ? "form-success" : "form-error"}>{message.text}</div> : null}
       {!interCredential ? <div className="form-error">Configure e ative o Banco Inter antes de emitir cobrancas.</div> : null}
       <section className="table-panel">

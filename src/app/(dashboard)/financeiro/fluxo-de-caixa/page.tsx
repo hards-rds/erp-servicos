@@ -1,5 +1,7 @@
 import { PageHeader } from "@/components/layout/page-header";
 import { MetricCard } from "@/components/ui/metric-card";
+import { CompetenceFilter } from "@/components/ui/competence-filter";
+import { competenceDateRange, resolveCompetence } from "@/lib/dates/competence";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type EntryRow = {
@@ -32,7 +34,10 @@ function sumValues<T extends { status: string }>(
     .reduce((total, row) => total + Number(row[amountKey] || 0), 0);
 }
 
-export default async function FluxoDeCaixaPage() {
+export default async function FluxoDeCaixaPage({ searchParams }: { searchParams?: Promise<{ competence?: string }> }) {
+  const params = await searchParams;
+  const competence = resolveCompetence(params?.competence);
+  const range = competenceDateRange(competence);
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   const { data: profile } = user
@@ -47,16 +52,20 @@ export default async function FluxoDeCaixaPage() {
       supabase
         .from("financial_entries")
         .select("net_amount,status")
-        .eq("company_id", profile.company_id),
+        .eq("company_id", profile.company_id)
+        .eq("competence", competence),
       supabase
         .from("payables")
         .select("amount,status")
-        .eq("company_id", profile.company_id),
+        .eq("company_id", profile.company_id)
+        .eq("competence", competence),
       supabase
         .from("commissions")
         .select("commission_amount")
         .eq("company_id", profile.company_id)
         .eq("status", "pendente")
+        .gte("reference_date", range.start)
+        .lt("reference_date", range.next)
         .is("payable_id", null)
     ]);
     entries = (entriesResult.data || []) as EntryRow[];
@@ -82,6 +91,7 @@ export default async function FluxoDeCaixaPage() {
         title="Fluxo de caixa"
         description="Visao por competencia, vencimento e caixa."
       />
+      <CompetenceFilter value={competence} pathname="/financeiro/fluxo-de-caixa" />
       <section className="metrics">
         <MetricCard label="Entradas previstas" value={formatMoney(expectedIncome)} />
         <MetricCard label="Entradas recebidas" value={formatMoney(receivedIncome)} />

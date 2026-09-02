@@ -1,12 +1,14 @@
 import { PageHeader } from "@/components/layout/page-header";
 import { RowActionsMenu } from "@/components/ui/row-actions-menu";
+import { CompetenceFilter } from "@/components/ui/competence-filter";
 import { CatalogServiceActions } from "@/components/services/catalog-service-actions";
 import { DeleteServiceButton } from "@/components/services/delete-service-button";
 import { canDeleteServiceStatus } from "@/domains/services/deletion";
 import { segmentLabels, serviceTypeOptions, type ServiceSegment } from "@/domains/services/catalog";
+import { competenceDateRange, resolveCompetence } from "@/lib/dates/competence";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-type ServicosPageProps = { searchParams?: Promise<{ status?: string; view?: string }> };
+type ServicosPageProps = { searchParams?: Promise<{ status?: string; view?: string; competence?: string }> };
 type CatalogService = { id: string; code: string | null; name: string; description: string | null; category: string | null; service_type: string; sale_price: number | string; fiscal_service_data: Record<string, unknown> | null; notes: string | null; active: boolean };
 type ServiceRecord = { id: string; service_description: string; service_type: string; amount: number | string; service_date: string; status: string; fiscal_service_data: Record<string, unknown> | null; clients: { legal_name: string } | { legal_name: string }[] | null };
 
@@ -41,6 +43,8 @@ function detailsSummary(service: ServiceRecord) {
 export default async function ServicosPage({ searchParams }: ServicosPageProps) {
   const params = await searchParams;
   const view = params?.view === "atendimentos" ? "atendimentos" : "catalogo";
+  const competence = resolveCompetence(params?.competence);
+  const range = competenceDateRange(competence);
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   const { data: profile } = user ? await supabase.from("profiles").select("company_id").eq("id", user.id).maybeSingle() : { data: null };
@@ -48,7 +52,7 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
   const segment = (company?.service_segment || "tecnologia") as ServiceSegment;
   const typeOptions = serviceTypeOptions[segment] || serviceTypeOptions.tecnologia;
   const [{ data: services }, { data: catalog }] = profile?.company_id ? await Promise.all([
-    supabase.from("service_records").select("id,service_description,service_type,amount,service_date,status,fiscal_service_data,clients(legal_name)").eq("company_id", profile.company_id).order("service_date", { ascending: false }).limit(100),
+    supabase.from("service_records").select("id,service_description,service_type,amount,service_date,status,fiscal_service_data,clients(legal_name)").eq("company_id", profile.company_id).gte("service_date", range.start).lt("service_date", range.next).order("service_date", { ascending: false }).limit(500),
     supabase.from("service_catalog").select("id,code,name,description,category,service_type,sale_price,fiscal_service_data,notes,active").eq("company_id", profile.company_id).order("active", { ascending: false }).order("name")
   ]) : [{ data: [] }, { data: [] }];
   const allServices = (services || []) as ServiceRecord[];
@@ -68,8 +72,9 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
       {message ? <div className={message.kind === "success" ? "form-success" : "form-error"}>{message.text}</div> : null}
       <nav className="report-tabs" aria-label="Visoes de servicos">
         <a className={view === "catalogo" ? "active" : ""} href="/cadastros/servicos?view=catalogo">Catalogo</a>
-        <a className={view === "atendimentos" ? "active" : ""} href="/cadastros/servicos?view=atendimentos">Atendimentos</a>
+        <a className={view === "atendimentos" ? "active" : ""} href={`/cadastros/servicos?view=atendimentos&competence=${competence}`}>Atendimentos</a>
       </nav>
+      {view === "atendimentos" ? <CompetenceFilter value={competence} pathname="/cadastros/servicos" params={{ view: "atendimentos" }} /> : null}
       {view === "catalogo" ? (
         <section className="table-panel">
           <h2>Servicos prontos</h2>

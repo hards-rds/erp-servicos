@@ -1,5 +1,7 @@
 import { MetricCard } from "@/components/ui/metric-card";
+import { CompetenceFilter } from "@/components/ui/competence-filter";
 import { PageHeader } from "@/components/layout/page-header";
+import { competenceDateRange, resolveCompetence } from "@/lib/dates/competence";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type FinancialEntryRow = {
@@ -36,7 +38,10 @@ function getClientName(entry: FinancialEntryRow) {
   return client?.legal_name || "-";
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams?: Promise<{ competence?: string }> }) {
+  const params = await searchParams;
+  const competence = resolveCompetence(params?.competence);
+  const range = competenceDateRange(competence);
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   const { data: profile } = user
@@ -53,23 +58,28 @@ export default async function DashboardPage() {
         .from("financial_entries")
         .select("id,description,due_date,net_amount,received_amount,status,clients(legal_name)")
         .eq("company_id", profile.company_id)
+        .eq("competence", competence)
         .neq("status", "cancelado")
         .order("due_date", { ascending: true }),
       supabase
         .from("payables")
         .select("amount,status")
         .eq("company_id", profile.company_id)
+        .eq("competence", competence)
         .neq("status", "cancelado"),
       supabase
         .from("commissions")
         .select("commission_amount")
         .eq("company_id", profile.company_id)
         .eq("status", "pendente")
+        .gte("reference_date", range.start)
+        .lt("reference_date", range.next)
         .is("payable_id", null),
       supabase
         .from("nfse_documents")
         .select("id", { count: "exact", head: true })
         .eq("company_id", profile.company_id)
+        .eq("competence", competence)
         .in("status", ["rascunho", "validada", "enfileirada", "rejeitada", "erro_integracao"])
     ]);
     entries = (entriesResult.data || []) as FinancialEntryRow[];
@@ -106,6 +116,7 @@ export default async function DashboardPage() {
         title="Visao operacional"
         description="Resumo financeiro e fiscal da operacao."
       />
+      <CompetenceFilter value={competence} pathname="/dashboard" />
       <section className="metrics dashboard-metrics">
         <MetricCard label="Recebivel previsto" value={formatMoney(expected)} detail={`${openEntries.length} em aberto`} />
         <MetricCard label="Recebido" value={formatMoney(received)} detail={`${realizedPercent}% realizado`} />

@@ -2,6 +2,8 @@ import { CommissionActions } from "@/components/finance/commission-actions";
 import { PageHeader } from "@/components/layout/page-header";
 import { MetricCard } from "@/components/ui/metric-card";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { CompetenceFilter } from "@/components/ui/competence-filter";
+import { competenceDateRange, resolveCompetence } from "@/lib/dates/competence";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type SellerRow = { id: string; name: string; email: string | null };
@@ -55,8 +57,10 @@ function getTone(status: string) {
   return "neutral" as const;
 }
 
-export default async function ComissoesPage({ searchParams }: { searchParams?: Promise<{ status?: string }> }) {
+export default async function ComissoesPage({ searchParams }: { searchParams?: Promise<{ status?: string; competence?: string }> }) {
   const params = await searchParams;
+  const competence = resolveCompetence(params?.competence);
+  const range = competenceDateRange(competence);
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   const { data: profile } = user
@@ -77,6 +81,8 @@ export default async function ComissoesPage({ searchParams }: { searchParams?: P
         .from("commissions")
         .select("id,description,source_type,reference_date,due_date,base_amount,rate_percent,commission_amount,status,paid_at,payment_method,seller:commission_sellers!commissions_commission_seller_id_fkey(name,email)")
         .eq("company_id", profile.company_id)
+        .gte("reference_date", range.start)
+        .lt("reference_date", range.next)
         .order("reference_date", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(200)
@@ -100,6 +106,7 @@ export default async function ComissoesPage({ searchParams }: { searchParams?: P
         description="Controle comissoes de vendas e servicos, aprovacao e pagamento por vendedor."
         action={<a className="primary-button button-link" href="/financeiro/comissoes/vendedores">Vendedores e percentuais</a>}
       />
+      <CompetenceFilter value={competence} pathname="/financeiro/comissoes" />
       {message ? <div className={message.kind === "success" ? "form-success" : "form-error"}>{message.text}</div> : null}
       <section className="metrics">
         <MetricCard label="Total ativo" value={formatMoney(active.reduce((sum, item) => sum + Number(item.commission_amount), 0))} detail={`${active.length} comissoes`} />

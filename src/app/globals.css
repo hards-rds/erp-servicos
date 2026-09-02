@@ -975,6 +975,53 @@ summary:focus-visible {
   gap: 8px;
 }
 
+.competence-filter {
+  min-height: 70px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.competence-filter-summary,
+.competence-filter-controls,
+.competence-filter-controls form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.competence-filter-summary {
+  color: var(--accent);
+}
+
+.competence-filter-summary span {
+  display: grid;
+  gap: 2px;
+}
+
+.competence-filter-summary small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+
+.competence-filter-summary strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.competence-filter-controls input[type="month"] {
+  width: 156px;
+  min-height: 38px;
+  padding-block: 7px;
+}
+
 .metrics,
 .grid {
   display: grid;
@@ -2332,6 +2379,21 @@ tbody tr:last-child td {
   .page-actions .page-actions {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .competence-filter,
+  .competence-filter-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .competence-filter-controls form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .competence-filter-controls input[type="month"] {
+    width: 100%;
   }
 
   .page-form-panel {

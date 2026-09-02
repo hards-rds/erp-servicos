@@ -3,7 +3,9 @@ import { NfseProcessForm } from "@/components/fiscal/nfse-process-form";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { RowActionsMenu } from "@/components/ui/row-actions-menu";
+import { CompetenceFilter } from "@/components/ui/competence-filter";
 import { mergeNfseFiscalData } from "@/lib/integrations/nfse-national";
+import { resolveCompetence } from "@/lib/dates/competence";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type Relation<T> = T | T[] | null;
@@ -26,7 +28,7 @@ type NfseRow = {
 };
 
 type EmissaoNfsePageProps = {
-  searchParams?: Promise<{ status?: string; message?: string; documentId?: string }>;
+  searchParams?: Promise<{ status?: string; message?: string; documentId?: string; competence?: string }>;
 };
 
 const statusMessages: Record<string, { kind: "success" | "error"; text: string }> = {
@@ -89,6 +91,7 @@ function canReview(status: string) {
 
 export default async function EmissaoNfsePage({ searchParams }: EmissaoNfsePageProps) {
   const params = await searchParams;
+  const competence = resolveCompetence(params?.competence);
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   const [{ data: profile }, { data: canEdit }, { data: canEmit }] = user
@@ -108,6 +111,7 @@ export default async function EmissaoNfsePage({ searchParams }: EmissaoNfsePageP
         financial_entries(description,contract_id,contracts(fiscal_service_data))
       `)
       .eq("company_id", profile.company_id)
+      .eq("competence", competence)
       .order("created_at", { ascending: false })
       .limit(100)
     : { data: [] };
@@ -129,6 +133,7 @@ export default async function EmissaoNfsePage({ searchParams }: EmissaoNfsePageP
         title="Emissao de NFS-e"
         description="Confira emitente, tomador, servico e tributacao antes de confirmar a emissao."
       />
+      <CompetenceFilter value={competence} pathname="/fiscal/emissao-nfse" />
       {message ? (
         <div className={message.kind === "success" ? "form-success" : "form-error"}>
           {params?.message || message.text}
@@ -166,7 +171,7 @@ export default async function EmissaoNfsePage({ searchParams }: EmissaoNfsePageP
             {selected.rejection_message ? <div className="form-error">{selected.rejection_message}</div> : null}
             <div className="table-actions">
               {canEmit && canReview(selected.status) ? <NfseProcessForm documentId={selected.id} realProduction={realProduction} /> : null}
-              <a className="ghost-button compact-button button-link" href="/fiscal/emissao-nfse">Fechar conferencia</a>
+              <a className="ghost-button compact-button button-link" href={`/fiscal/emissao-nfse?competence=${competence}`}>Fechar conferencia</a>
             </div>
           </section>
         );

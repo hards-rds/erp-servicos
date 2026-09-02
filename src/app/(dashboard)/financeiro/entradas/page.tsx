@@ -1,6 +1,8 @@
 import { PageHeader } from "@/components/layout/page-header";
 import { EntryActions } from "@/components/finance/receive-entry-form";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { CompetenceFilter } from "@/components/ui/competence-filter";
+import { resolveCompetence } from "@/lib/dates/competence";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type EntryRow = {
@@ -17,7 +19,7 @@ type EntryRow = {
 };
 
 type EntradasPageProps = {
-  searchParams?: Promise<{ status?: string }>;
+  searchParams?: Promise<{ status?: string; competence?: string }>;
 };
 
 const statusMessages: Record<string, { kind: "success" | "error"; text: string }> = {
@@ -64,6 +66,7 @@ function canReceive(entry: EntryRow) {
 
 export default async function EntradasPage({ searchParams }: EntradasPageProps) {
   const params = await searchParams;
+  const competence = resolveCompetence(params?.competence);
   const message = params?.status ? statusMessages[params.status] : null;
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -75,6 +78,7 @@ export default async function EntradasPage({ searchParams }: EntradasPageProps) 
       .from("financial_entries")
       .select("id,description,competence,due_date,received_at,received_amount,net_amount,payment_method,status,clients(legal_name)")
       .eq("company_id", profile.company_id)
+      .eq("competence", competence)
       .order("due_date", { ascending: false })
       .limit(100)
     : { data: [] };
@@ -88,6 +92,7 @@ export default async function EntradasPage({ searchParams }: EntradasPageProps) 
         description="Contas a receber recorrentes, manuais, avulsas, boletos e notas fiscais."
         action={<a className="primary-button button-link" href="/cadastros/servicos">Novo servico</a>}
       />
+      <CompetenceFilter value={competence} pathname="/financeiro/entradas" />
       {message ? <div className={message.kind === "success" ? "form-success" : "form-error"}>{message.text}</div> : null}
       <section className="table-panel">
         <h2>Lancamentos</h2>

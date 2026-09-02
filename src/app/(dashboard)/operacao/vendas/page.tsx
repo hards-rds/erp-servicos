@@ -2,10 +2,12 @@ import { PageHeader } from "@/components/layout/page-header";
 import { DeleteSaleButton } from "@/components/sales/delete-sale-button";
 import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { CompetenceFilter } from "@/components/ui/competence-filter";
+import { competenceDateRange, resolveCompetence } from "@/lib/dates/competence";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type VendasPageProps = {
-  searchParams?: Promise<{ status?: string }>;
+  searchParams?: Promise<{ status?: string; competence?: string }>;
 };
 
 type SaleRow = {
@@ -51,6 +53,8 @@ function getClientName(sale: SaleRow) {
 
 export default async function VendasPage({ searchParams }: VendasPageProps) {
   const params = await searchParams;
+  const competence = resolveCompetence(params?.competence);
+  const range = competenceDateRange(competence);
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   const { data: profile } = user
@@ -59,7 +63,7 @@ export default async function VendasPage({ searchParams }: VendasPageProps) {
   const companyId = profile?.company_id;
 
   const { data: sales } = companyId
-    ? await supabase.from("sales").select("id,sale_date,description,net_amount,status,clients(legal_name)").eq("company_id", companyId).order("sale_date", { ascending: false }).order("created_at", { ascending: false }).limit(50)
+    ? await supabase.from("sales").select("id,sale_date,description,net_amount,status,clients(legal_name)").eq("company_id", companyId).gte("sale_date", range.start).lt("sale_date", range.next).order("sale_date", { ascending: false }).order("created_at", { ascending: false }).limit(500)
     : { data: [] };
   const allSales = (sales || []) as SaleRow[];
   const message = params?.status ? statusMessages[params.status] : null;
@@ -71,6 +75,7 @@ export default async function VendasPage({ searchParams }: VendasPageProps) {
         description="Venda de produtos, servicos cadastrados ou atendimentos avulsos."
         action={<a className="primary-button button-link" href="/operacao/vendas/nova">Nova venda</a>}
       />
+      <CompetenceFilter value={competence} pathname="/operacao/vendas" />
       {message ? <div className={message.kind === "success" ? "form-success" : "form-error"}>{message.text}</div> : null}
       <section className="table-panel">
           <h2>Ultimas vendas</h2>

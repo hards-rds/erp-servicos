@@ -2,6 +2,8 @@ import { PageHeader } from "@/components/layout/page-header";
 import { NfseCancelForm } from "@/components/fiscal/nfse-cancel-form";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { RowActionsMenu } from "@/components/ui/row-actions-menu";
+import { CompetenceFilter } from "@/components/ui/competence-filter";
+import { resolveCompetence } from "@/lib/dates/competence";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type NfseRow = {
@@ -30,7 +32,7 @@ function getTone(status: string) {
 }
 
 type NotasEmitidasPageProps = {
-  searchParams?: Promise<{ status?: string; message?: string }>;
+  searchParams?: Promise<{ status?: string; message?: string; competence?: string }>;
 };
 
 const statusMessages: Record<string, { kind: "success" | "error"; text: string }> = {
@@ -49,6 +51,7 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
 
 export default async function NotasEmitidasPage({ searchParams }: NotasEmitidasPageProps) {
   const params = await searchParams;
+  const competence = resolveCompetence(params?.competence);
   const supabase = await createServerSupabaseClient();
   const { data: canCancel } = await supabase.rpc("app_has_permission", {
     permission_module: "fiscal.nfse",
@@ -63,6 +66,7 @@ export default async function NotasEmitidasPage({ searchParams }: NotasEmitidasP
       .from("nfse_documents")
       .select("id,danfse_file_id,external_id,competence,service_amount,status,clients(legal_name,fiscal_email)")
       .eq("company_id", profile.company_id)
+      .eq("competence", competence)
       .in("status", ["autorizada", "cancelada"])
       .order("created_at", { ascending: false })
       .limit(100)
@@ -80,6 +84,7 @@ export default async function NotasEmitidasPage({ searchParams }: NotasEmitidasP
         title="Notas emitidas"
         description="DPS, NFS-e, XML/JSON de retorno, DANFSe e historico de eventos."
       />
+      <CompetenceFilter value={competence} pathname="/fiscal/notas-emitidas" />
       {message ? (
         <div className={message.kind === "success" ? "form-success" : "form-error"}>
           {params?.message || message.text}
