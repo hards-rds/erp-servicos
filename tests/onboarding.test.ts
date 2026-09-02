@@ -18,6 +18,9 @@ const emptySignals: OnboardingSignals = {
   schoolAthletes: 0,
   schoolClasses: 0,
   schoolEnrollments: 0,
+  transportVehicles: 0,
+  transportDrivers: 0,
+  transportTrips: 0,
   fiscalConfigured: false,
   emailConfigured: false
 };
@@ -26,6 +29,7 @@ test("onboarding monta etapas proprias para cada segmento", () => {
   const technology = buildOnboardingSteps("tecnologia", emptySignals).map((step) => step.id);
   const optical = buildOnboardingSteps("otica", emptySignals).map((step) => step.id);
   const school = buildOnboardingSteps("escola_futebol", emptySignals).map((step) => step.id);
+  const transport = buildOnboardingSteps("transportadora", emptySignals).map((step) => step.id);
 
   assert.deepEqual(technology.slice(0, 5), ["company", "access", "clients", "services", "contracts"]);
   assert.ok(optical.includes("products"));
@@ -33,6 +37,10 @@ test("onboarding monta etapas proprias para cada segmento", () => {
   assert.ok(school.includes("athletes"));
   assert.ok(school.includes("enrollments"));
   assert.ok(!school.includes("fiscal"));
+  assert.ok(transport.includes("fleet"));
+  assert.ok(transport.includes("drivers"));
+  assert.ok(transport.includes("trips"));
+  assert.ok(transport.includes("fiscal"));
 });
 
 test("progresso considera somente etapas obrigatorias", () => {

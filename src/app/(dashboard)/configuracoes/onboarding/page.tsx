@@ -16,6 +16,7 @@ const segmentLabels: Record<OnboardingSegment, string> = {
   tecnologia: "Tecnologia",
   otica: "Otica",
   escola_futebol: "Escola de futebol",
+  transportadora: "Transportadora",
   generico: "Generico"
 };
 
@@ -39,6 +40,9 @@ export default async function OnboardingPage() {
     athletesResult,
     classesResult,
     enrollmentsResult,
+    vehiclesResult,
+    driversResult,
+    tripsResult,
     certificateResult,
     emailResult
   ] = await Promise.all([
@@ -53,12 +57,15 @@ export default async function OnboardingPage() {
     access.supabase.from("school_athletes").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("status", "ativo"),
     access.supabase.from("school_classes").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("active", true),
     access.supabase.from("school_enrollments").select("id", { count: "exact", head: true }).eq("company_id", companyId).in("status", ["pendente", "ativa"]),
+    access.supabase.from("transport_vehicles").select("id", { count: "exact", head: true }).eq("company_id", companyId).neq("status", "inativo"),
+    access.supabase.from("transport_drivers").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("status", "ativo"),
+    access.supabase.from("transport_trips").select("id", { count: "exact", head: true }).eq("company_id", companyId).neq("status", "cancelada"),
     access.supabase.from("digital_certificates").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("active", true),
     access.supabase.from("email_settings").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("active", true)
   ]);
 
   const company = companyResult.data;
-  const segment = (["tecnologia", "otica", "escola_futebol", "generico"].includes(company?.service_segment || "")
+  const segment = (["tecnologia", "otica", "escola_futebol", "transportadora", "generico"].includes(company?.service_segment || "")
     ? company?.service_segment
     : "generico") as OnboardingSegment;
   const fiscal = (company?.fiscal_settings || {}) as Record<string, unknown>;
@@ -73,6 +80,9 @@ export default async function OnboardingPage() {
     schoolAthletes: athletesResult.count || 0,
     schoolClasses: classesResult.count || 0,
     schoolEnrollments: enrollmentsResult.count || 0,
+    transportVehicles: vehiclesResult.count || 0,
+    transportDrivers: driversResult.count || 0,
+    transportTrips: tripsResult.count || 0,
     fiscalConfigured: Boolean(fiscal.cityCode && (certificateResult.count || 0) > 0),
     emailConfigured: (emailResult.count || 0) > 0
   };

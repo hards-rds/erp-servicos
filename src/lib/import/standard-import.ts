@@ -30,7 +30,7 @@ export const standardImportDefinitions: Record<StandardImportKind, {
   clients: {
     label: "Clientes",
     description: "Cadastro fiscal, contato e endereco",
-    segments: ["tecnologia", "otica", "escola_futebol", "generico"],
+    segments: ["tecnologia", "otica", "escola_futebol", "transportadora", "generico"],
     columns: [
       "Nome", "CPF/CNPJ", "Nome fantasia", "E-mail fiscal", "E-mail financeiro", "Telefone",
       "CEP", "Logradouro", "Numero", "Complemento", "Bairro", "Cidade", "UF", "Codigo IBGE",
@@ -40,7 +40,7 @@ export const standardImportDefinitions: Record<StandardImportKind, {
   services: {
     label: "Servicos",
     description: "Catalogo, valores e codigos fiscais",
-    segments: ["tecnologia", "otica", "generico"],
+    segments: ["tecnologia", "otica", "transportadora", "generico"],
     columns: [
       "Codigo", "Nome", "Descricao", "Categoria", "Tipo", "Preco de venda", "Codigo nacional do servico",
       "Codigo municipal do servico", "NBS", "Reter ISS", "Observacoes", "Ativo"

@@ -14,7 +14,7 @@ const messages: Record<string, { type: "success" | "error"; text: string }> = {
 };
 
 const statusLabels: Record<string, string> = { planned: "Planejado", running: "Em validacao", blocked: "Bloqueado", approved: "Aprovado", cancelled: "Cancelado" };
-const segmentLabels: Record<string, string> = { tecnologia: "Tecnologia", otica: "Otica", escola_futebol: "Escola de futebol", generico: "Generico" };
+const segmentLabels: Record<string, string> = { tecnologia: "Tecnologia", otica: "Otica", escola_futebol: "Escola de futebol", transportadora: "Transportadora", generico: "Generico" };
 
 export default async function PilotsPage({ searchParams }: { searchParams?: Promise<{ status?: string }> }) {
   const params = await searchParams;

@@ -3,7 +3,7 @@ import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-acce
 import { createServiceClient } from "@/lib/supabase/server";
 import { onlyDigits } from "@/lib/validations/br-documents";
 
-const segments = new Set(["tecnologia", "otica", "escola_futebol", "generico"]);
+const segments = new Set(["tecnologia", "otica", "escola_futebol", "transportadora", "generico"]);
 const simpleNationalStatuses = new Set(["1", "2", "3"]);
 const assessmentRegimes = new Set(["1", "2", "3"]);
 const specialTaxRegimes = new Set(["0", "1", "2", "3", "4", "5", "6", "9"]);

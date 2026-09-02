@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
       || !companyName
       || !["starter", "pro", "enterprise"].includes(plan)
       || !["active", "trial", "suspended", "cancelled"].includes(tenantStatus)
-      || !["tecnologia", "otica", "escola_futebol", "generico"].includes(serviceSegment)
+      || !["tecnologia", "otica", "escola_futebol", "transportadora", "generico"].includes(serviceSegment)
       || (masterUserId && !masterName)
     ) {
       return redirectWith(request, "update_invalid");
@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
     || !masterName
     || !isEmail(masterEmail)
     || masterPassword.length < 8
-    || !["tecnologia", "otica", "escola_futebol", "generico"].includes(serviceSegment)
+    || !["tecnologia", "otica", "escola_futebol", "transportadora", "generico"].includes(serviceSegment)
   ) {
     return redirectWith(request, "invalid");
   }

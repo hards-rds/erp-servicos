@@ -1,4 +1,4 @@
-export type OnboardingSegment = "tecnologia" | "otica" | "escola_futebol" | "generico";
+export type OnboardingSegment = "tecnologia" | "otica" | "escola_futebol" | "transportadora" | "generico";
 
 export type OnboardingSignals = {
   companyIdentity: boolean;
@@ -11,6 +11,9 @@ export type OnboardingSignals = {
   schoolAthletes: number;
   schoolClasses: number;
   schoolEnrollments: number;
+  transportVehicles: number;
+  transportDrivers: number;
+  transportTrips: number;
   fiscalConfigured: boolean;
   emailConfigured: boolean;
 };
@@ -157,6 +160,16 @@ export function buildOnboardingSteps(segment: OnboardingSegment, signals: Onboar
         actionLabel: "Abrir entradas",
         complete: signals.financialEntries > 0
       }
+    ];
+  }
+
+  if (segment === "transportadora") {
+    return [
+      ...common,
+      { id: "fleet", title: "Frota", detail: signals.transportVehicles ? `${signals.transportVehicles} veiculo(s) cadastrado(s)` : "Nenhum veiculo cadastrado", href: "/transporte/frota", actionLabel: "Abrir frota", complete: signals.transportVehicles > 0 },
+      { id: "drivers", title: "Motoristas", detail: signals.transportDrivers ? `${signals.transportDrivers} motorista(s) cadastrado(s)` : "Nenhum motorista cadastrado", href: "/transporte/motoristas", actionLabel: "Abrir motoristas", complete: signals.transportDrivers > 0 },
+      { id: "trips", title: "Primeira viagem", detail: signals.transportTrips ? `${signals.transportTrips} viagem(ns) cadastrada(s)` : "Nenhuma viagem cadastrada", href: "/transporte/viagens", actionLabel: "Abrir viagens", complete: signals.transportTrips > 0 },
+      ...fiscalSteps(signals)
     ];
   }
 

@@ -53,7 +53,7 @@ export default async function PilotDetailsPage({ params, searchParams }: { param
   const progress = pilotProgress(checks.map((check) => ({ key: check.check_key, required: check.required, status: check.status as PilotCheckStatus })));
   const blockers = countPilotBlockers(readiness);
   const canApprove = canApprovePilot(checks.map((check) => ({ key: check.check_key, required: check.required, status: check.status as PilotCheckStatus })), blockers);
-  const validSegments = new Set<PilotSegment>(["tecnologia", "otica", "escola_futebol", "generico"]);
+  const validSegments = new Set<PilotSegment>(["tecnologia", "otica", "escola_futebol", "transportadora", "generico"]);
   const segments = (tenant.companies || []).map((company) => company.service_segment as PilotSegment).filter((segment) => validSegments.has(segment));
   const preview = buildPilotChecklist(segments);
   const message = query?.status ? messages[query.status] : null;

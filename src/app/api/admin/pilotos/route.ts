@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     const { data: pilot, error } = pilotResult;
     if (error || !pilot) return redirectWith(request, tenantId, "error");
 
-    const validSegments = new Set<PilotSegment>(["tecnologia", "otica", "escola_futebol", "generico"]);
+    const validSegments = new Set<PilotSegment>(["tecnologia", "otica", "escola_futebol", "transportadora", "generico"]);
     const segments = (tenant.companies || [])
       .map((company) => company.service_segment as PilotSegment)
       .filter((segment) => validSegments.has(segment));

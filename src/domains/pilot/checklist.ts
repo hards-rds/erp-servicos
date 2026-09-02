@@ -1,4 +1,4 @@
-export type PilotSegment = "tecnologia" | "otica" | "escola_futebol" | "generico";
+export type PilotSegment = "tecnologia" | "otica" | "escola_futebol" | "transportadora" | "generico";
 
 export type PilotCheckStatus = "pending" | "passed" | "failed" | "not_applicable";
 
@@ -43,6 +43,12 @@ const segmentChecks: Record<PilotSegment, PilotCheckDefinition[]> = {
     { key: "school_class", category: "Escola", title: "Turma e matricula", description: "Vincular atleta a turma e validar a matricula.", required: true },
     { key: "school_monthly_fee", category: "Escola", title: "Mensalidade", description: "Gerar mensalidade sem duplicidade e registrar recebimento.", required: true },
     { key: "school_attendance", category: "Escola", title: "Presenca e historico", description: "Registrar presenca e consultar o historico do aluno.", required: true }
+  ],
+  transportadora: [
+    { key: "transport_fleet", category: "Transporte", title: "Frota e motoristas", description: "Cadastrar veiculo, reboque e motorista com documentos validos.", required: true },
+    { key: "transport_trip", category: "Transporte", title: "Viagem completa", description: "Planejar rota e carga, gerar financeiro e concluir a viagem.", required: true },
+    { key: "transport_cte", category: "Fiscal", title: "CT-e em homologacao", description: "Preparar, validar, transmitir e consultar um CT-e no ambiente de homologacao.", required: true },
+    { key: "transport_cancellation", category: "Fiscal", title: "Cancelamento de CT-e", description: "Validar evento de cancelamento e trilha de auditoria.", required: false }
   ],
   generico: [
     { key: "generic_sale", category: "Operacao", title: "Venda ou servico", description: "Executar a rotina principal e conferir seus reflexos financeiros.", required: true }

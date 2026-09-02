@@ -64,6 +64,7 @@ export default async function GeraisPage({ searchParams }: GeraisPageProps) {
               <option value="tecnologia">Tecnologia</option>
               <option value="otica">Otica</option>
               <option value="escola_futebol">Escola de futebol</option>
+              <option value="transportadora">Transportadora</option>
               <option value="generico">Generico / outros servicos</option>
             </select>
           </label>

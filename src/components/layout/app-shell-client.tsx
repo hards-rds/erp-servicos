@@ -23,6 +23,7 @@ import {
   ClipboardList,
   CreditCard,
   FilePlus2,
+  FileCheck2,
   FileUp,
   FileText,
   GraduationCap,
@@ -43,6 +44,8 @@ import {
   Sun,
   NotebookTabs,
   Trophy,
+  Route,
+  Truck,
   UserRoundCog,
   Users,
   WalletCards,
@@ -76,10 +79,18 @@ const nav = [
     ]
   },
   {
+    title: "Transporte",
+    items: [
+      { href: "/transporte/frota", label: "Frota", icon: Truck, onlyForSegments: ["transportadora"] },
+      { href: "/transporte/motoristas", label: "Motoristas", icon: Users, onlyForSegments: ["transportadora"] },
+      { href: "/transporte/viagens", label: "Viagens", icon: Route, onlyForSegments: ["transportadora"] }
+    ]
+  },
+  {
     title: "Operacao",
     items: [
-      { href: "/operacao/vendas", label: "Vendas", icon: ShoppingCart },
-      { href: "/operacao/estoque", label: "Estoque", icon: Package },
+      { href: "/operacao/vendas", label: "Vendas", icon: ShoppingCart, hiddenForSegments: ["transportadora"] },
+      { href: "/operacao/estoque", label: "Estoque", icon: Package, hiddenForSegments: ["transportadora"] },
       { href: "/operacao/chamados", label: "Chamados", icon: MessagesSquare, onlyForSegments: ["tecnologia"] }
     ]
   },
@@ -104,8 +115,9 @@ const nav = [
   {
     title: "Fiscal",
     items: [
-      { href: "/fiscal/emissao-nfse", label: "Emissao de NFS-e", icon: FilePlus2 },
-      { href: "/fiscal/notas-emitidas", label: "Notas Emitidas", icon: ReceiptText }
+      { href: "/fiscal/emissao-nfse", label: "Emissao de NFS-e", icon: FilePlus2, hiddenForSegments: ["transportadora"] },
+      { href: "/fiscal/notas-emitidas", label: "Notas Emitidas", icon: ReceiptText, hiddenForSegments: ["transportadora"] },
+      { href: "/fiscal/emissao-cte", label: "Emissao de CT-e", icon: FileCheck2, onlyForSegments: ["transportadora"] }
     ]
   },
   {
@@ -144,6 +156,7 @@ const segmentLabels: Record<string, string> = {
   tecnologia: "Tecnologia",
   otica: "Otica",
   escola_futebol: "Escola de futebol",
+  transportadora: "Transportadora",
   generico: "Generico"
 };
 

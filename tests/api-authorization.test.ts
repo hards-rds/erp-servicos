@@ -48,7 +48,7 @@ test("toda API de negocio declara sua barreira de acesso", () => {
   ]);
   const customProtectedRoutes = new Set(["src/app/api/admin/switch-company/route.ts"]);
   const cronRoutes = new Set(["src/app/api/cron/recorrencias/route.ts"]);
-  const protectedMarkers = /requireCompanyPermission|app_has_permission|getSchoolContext|requireSystemAdmin/;
+  const protectedMarkers = /requireCompanyPermission|app_has_permission|getSchoolContext|getTransportContext|requireSystemAdmin/;
 
   for (const file of routeFiles(join(process.cwd(), "src/app/api"))) {
     if (publicRoutes.has(file) || customProtectedRoutes.has(file)) continue;

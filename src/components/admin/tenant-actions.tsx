@@ -89,6 +89,7 @@ export function TenantActions({ tenant, company, master }: TenantActionsProps) {
                 <option value="tecnologia">Tecnologia</option>
                 <option value="otica">Otica</option>
                 <option value="escola_futebol">Escola de futebol</option>
+                <option value="transportadora">Transportadora</option>
                 <option value="generico">Generico</option>
               </select>
             </label>
