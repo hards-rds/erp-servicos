@@ -46,7 +46,8 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   not_found: { kind: "error", text: "Documento fiscal nao encontrado." },
   profile_error: { kind: "error", text: "Seu usuario ainda nao esta vinculado a uma empresa." },
   error: { kind: "error", text: "Nao foi possivel processar a NFS-e agora." },
-  batch_submitted: { kind: "success", text: "Lote de NFS-e processado. Confira os status individuais." }
+  batch_submitted: { kind: "success", text: "Lote de NFS-e processado. Confira os status individuais." },
+  registration_updated: { kind: "error", text: "A razao social do tomador foi atualizada pelo CNPJ. Confira e confirme novamente a emissao." }
 };
 
 function relation<T>(item: Relation<T>) {

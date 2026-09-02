@@ -1,7 +1,7 @@
-type ClientOption = {
-  id: string;
-  legal_name: string;
-};
+import { getClientIdentityLabel, type ClientIdentity } from "@/lib/client-identity";
+import { IbsCbsServiceFields } from "@/components/fiscal/ibs-cbs-fields";
+
+type ClientOption = ClientIdentity & { id: string };
 
 export type ContractFormValue = {
   id: string;
@@ -51,7 +51,7 @@ export function ContractForm({
         <select name="clientId" required defaultValue={contract?.client_id || ""}>
           <option value="" disabled>Selecione um cliente</option>
           {clients.map((client) => (
-            <option key={client.id} value={client.id}>{client.legal_name}</option>
+            <option key={client.id} value={client.id}>{getClientIdentityLabel(client)}</option>
           ))}
         </select>
       </label>
@@ -177,4 +177,3 @@ export function ContractForm({
     </form>
   );
 }
-import { IbsCbsServiceFields } from "@/components/fiscal/ibs-cbs-fields";

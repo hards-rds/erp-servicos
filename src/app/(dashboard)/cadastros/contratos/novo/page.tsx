@@ -11,10 +11,11 @@ export default async function NovoContratoPage() {
   const { data: clients } = profile?.company_id
     ? await supabase
       .from("clients")
-      .select("id,legal_name")
+      .select("id,legal_name,document,address")
       .eq("company_id", profile.company_id)
       .eq("status", "ativo")
       .order("legal_name", { ascending: true })
+      .order("document", { ascending: true })
     : { data: [] };
 
   return (

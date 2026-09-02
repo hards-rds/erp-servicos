@@ -5,6 +5,8 @@ import { loadRuntimeCertificate } from "@/lib/certificates/runtime-certificate";
 import { generateAndAttachDanfsePdf } from "@/lib/fiscal/danfse";
 import { logFiscalEmail, sendFiscalDocumentEmail } from "@/lib/email/fiscal-email";
 import { dueDateForCompetence } from "@/lib/dates/competence";
+import { lookupCnpjRegistration, registrationChangesClientName } from "@/lib/integrations/brasil-api";
+import { onlyDigits } from "@/lib/validations/br-documents";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -122,12 +124,13 @@ export async function POST(request: NextRequest) {
         id,
         company_id,
         client_id,
+        status,
         financial_entry_id,
         competence,
         service_amount,
         request_payload,
         companies(name,document,fiscal_settings),
-        clients(legal_name,document,fiscal_email,phone,address),
+        clients(legal_name,trade_name,document,fiscal_email,phone,address),
         financial_entries(id,contract_id,description,competence,net_amount,status,contracts(fiscal_service_data))
       `)
       .eq("id", nfseDocumentId)
@@ -165,6 +168,63 @@ export async function POST(request: NextRequest) {
     };
 
     if (!company || !client || !emissionEntry.description) return redirectWith(request, "invalid");
+
+    if (onlyDigits(client.document).length === 14) {
+      let registration: Awaited<ReturnType<typeof lookupCnpjRegistration>> | null = null;
+      try {
+        registration = await lookupCnpjRegistration(client.document);
+      } catch (registrationError) {
+        await supabase.from("nfse_events").insert({
+          nfse_document_id: document.id,
+          status: document.status,
+          message: "Nao foi possivel conferir a razao social do tomador pelo CNPJ.",
+          payload: { error: registrationError instanceof Error ? registrationError.message : "Erro desconhecido" },
+          created_by: profile.id
+        });
+      }
+
+      if (registration && registrationChangesClientName(client.legal_name, registration.legalName)) {
+        const previousLegalName = client.legal_name;
+        const { error: clientUpdateError } = await supabase
+          .from("clients")
+          .update({
+            legal_name: registration.legalName,
+            trade_name: client.trade_name || previousLegalName,
+            updated_by: profile.id,
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", document.client_id)
+          .eq("company_id", profile.company_id);
+
+        if (clientUpdateError) throw new Error(`Nao foi possivel atualizar a razao social: ${clientUpdateError.message}`);
+
+        await supabase.from("nfse_events").insert({
+          nfse_document_id: document.id,
+          status: document.status,
+          message: "Razao social do tomador atualizada pela consulta do CNPJ antes da emissao.",
+          payload: {
+            previousLegalName,
+            legalName: registration.legalName,
+            source: "brasilapi"
+          },
+          created_by: profile.id
+        });
+        await writeCompanyAudit({
+          companyId: profile.company_id,
+          actorId: profile.id,
+          entity: "client",
+          entityId: document.client_id,
+          action: "fiscal_name_sync",
+          metadata: { previousLegalName, legalName: registration.legalName, nfseDocumentId: document.id }
+        });
+
+        return redirectWithMessage(
+          request,
+          "registration_updated",
+          `A razao social foi atualizada de "${previousLegalName}" para "${registration.legalName}". Confira o tomador e confirme novamente a emissao.`
+        );
+      }
+    }
 
     const runtimeCertificate = await loadRuntimeCertificate(profile.company_id);
     const result = await requestNfseNationalEmission({

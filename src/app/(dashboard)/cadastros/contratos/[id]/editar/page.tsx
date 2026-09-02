@@ -20,10 +20,11 @@ export default async function EditarContratoPage({ params }: EditarContratoPageP
   const [{ data: clients }, { data: contract }] = await Promise.all([
     supabase
       .from("clients")
-      .select("id,legal_name")
+      .select("id,legal_name,document,address")
       .eq("company_id", profile.company_id)
       .eq("status", "ativo")
-      .order("legal_name", { ascending: true }),
+      .order("legal_name", { ascending: true })
+      .order("document", { ascending: true }),
     supabase
       .from("contracts")
       .select("id,client_id,service_description,recurring_amount,periodicity,due_day,starts_at,status,auto_generate_financial,auto_issue_nfse,auto_generate_charge,fiscal_service_data,notes")

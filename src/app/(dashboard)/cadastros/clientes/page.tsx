@@ -21,6 +21,7 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   duplicate: { kind: "error", text: "Ja existe um cliente com esse CPF/CNPJ." },
   plan_limit: { kind: "error", text: "O limite de clientes do plano foi atingido. Consulte Assinatura e plano." },
   invalid: { kind: "error", text: "Revise CPF/CNPJ e nome antes de salvar." },
+  cnpj_lookup_error: { kind: "error", text: "Nao foi possivel validar o CNPJ na base cadastral. Tente novamente antes de salvar." },
   optical_invalid: { kind: "error", text: "Revise cliente e data antes de salvar o registro optico." },
   optical_error: { kind: "error", text: "Nao foi possivel salvar o registro optico agora." },
   invalid_delete: { kind: "error", text: "Nao foi possivel identificar o cliente para excluir." },

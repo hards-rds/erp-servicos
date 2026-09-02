@@ -3,6 +3,7 @@ import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-acce
 import { isValidCpfOrCnpj, onlyDigits } from "@/lib/validations/br-documents";
 import { isPlanLimitError } from "@/domains/billing/saas-plans";
 import { canCreateTenantResource } from "@/server/services/saas-plan-service";
+import { lookupCnpjRegistration, mergeClientRegistration } from "@/lib/integrations/brasil-api";
 
 function readString(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
 
   const rawDocument = readString(formData, "document");
   let document = onlyDigits(rawDocument);
-  const legalName = readString(formData, "legalName");
+  let legalName = readString(formData, "legalName");
 
   if (action === "update" && clientId && !isValidCpfOrCnpj(document)) {
     const { data: existingClient } = await supabase
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest) {
     return redirectWith(request, "invalid");
   }
 
-  const address = {
+  let address = {
     street: readString(formData, "street"),
     number: readString(formData, "number"),
     complement: readString(formData, "complement"),
@@ -72,15 +73,42 @@ export async function POST(request: NextRequest) {
     zipCode: onlyDigits(readString(formData, "zipCode"))
   };
 
+  let tradeName = readString(formData, "tradeName") || null;
+  let fiscalEmail = readString(formData, "fiscalEmail") || null;
+  let financialEmail = readString(formData, "financialEmail") || null;
+  let phone = readString(formData, "phone") || null;
+
+  if (document.length === 14) {
+    try {
+      const registration = await lookupCnpjRegistration(document);
+      const registered = mergeClientRegistration({
+        legal_name: legalName,
+        trade_name: tradeName,
+        fiscal_email: fiscalEmail,
+        financial_email: financialEmail,
+        phone,
+        address
+      }, registration);
+      legalName = registered.legal_name;
+      tradeName = registered.trade_name;
+      fiscalEmail = registered.fiscal_email;
+      financialEmail = registered.financial_email;
+      phone = registered.phone;
+      address = registered.address as typeof address;
+    } catch {
+      return redirectWith(request, "cnpj_lookup_error");
+    }
+  }
+
   const payload = {
     legal_name: legalName,
-    trade_name: readString(formData, "tradeName") || null,
+    trade_name: tradeName,
     document,
     municipal_registration: readString(formData, "municipalRegistration") || null,
     state_registration: readString(formData, "stateRegistration") || null,
-    fiscal_email: readString(formData, "fiscalEmail") || null,
-    financial_email: readString(formData, "financialEmail") || null,
-    phone: readString(formData, "phone") || null,
+    fiscal_email: fiscalEmail,
+    financial_email: financialEmail,
+    phone,
     address,
     internal_notes: readString(formData, "internalNotes") || null,
     updated_by: profile.id

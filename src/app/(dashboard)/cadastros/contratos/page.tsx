@@ -1,6 +1,7 @@
 import { PageHeader } from "@/components/layout/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { RowActionsMenu } from "@/components/ui/row-actions-menu";
+import { formatBrazilianDocument, getClientLocation } from "@/lib/client-identity";
 import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
 
 type ContratosPageProps = {
@@ -21,7 +22,15 @@ type ContractRow = {
   auto_generate_charge: boolean;
   fiscal_service_data: Record<string, unknown> | null;
   notes: string | null;
-  clients: { legal_name: string } | { legal_name: string }[] | null;
+  clients: {
+    legal_name: string;
+    document: string;
+    address: Record<string, unknown> | null;
+  } | {
+    legal_name: string;
+    document: string;
+    address: Record<string, unknown> | null;
+  }[] | null;
 };
 
 const statusMessages: Record<string, { kind: "success" | "error"; text: string }> = {
@@ -51,6 +60,10 @@ function formatMoney(value: number | string) {
 function getClientName(contract: ContractRow) {
   const client = Array.isArray(contract.clients) ? contract.clients[0] : contract.clients;
   return client?.legal_name || "-";
+}
+
+function getClient(contract: ContractRow) {
+  return Array.isArray(contract.clients) ? contract.clients[0] : contract.clients;
 }
 
 export default async function ContratosPage({ searchParams }: ContratosPageProps) {
@@ -90,7 +103,7 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
     ? await Promise.all([
       supabase
         .from("contracts")
-        .select("id,client_id,service_description,recurring_amount,periodicity,due_day,starts_at,status,auto_generate_financial,auto_issue_nfse,auto_generate_charge,fiscal_service_data,notes,clients(legal_name)")
+        .select("id,client_id,service_description,recurring_amount,periodicity,due_day,starts_at,status,auto_generate_financial,auto_issue_nfse,auto_generate_charge,fiscal_service_data,notes,clients(legal_name,document,address)")
         .eq("company_id", profile.company_id)
         .order("created_at", { ascending: false })
         .limit(50),
@@ -135,52 +148,62 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
               </thead>
               <tbody>
                 {allContracts.length ? (
-                  allContracts.map((contract) => (
-                    <tr key={contract.id}>
-                      <td>{getClientName(contract)}</td>
-                      <td>{contract.service_description}</td>
-                      <td>{formatMoney(contract.recurring_amount)}</td>
-                      <td>Dia {contract.due_day}</td>
-                      <td><StatusBadge tone={contract.status === "ativo" ? "success" : "neutral"}>{contract.status}</StatusBadge></td>
-                      <td>{[
-                        contract.auto_generate_financial ? "Financeiro" : "",
-                        contract.auto_issue_nfse ? "NFS-e" : "",
-                        contract.auto_generate_charge ? "Boleto" : ""
-                      ].filter(Boolean).join(" · ") || "Manual"}</td>
-                      <td>
-                        <RowActionsMenu label={`Acoes do contrato de ${getClientName(contract)}`}>
-                          <a
-                            className="ghost-button button-link compact-button"
-                            href={`/cadastros/contratos/${contract.id}/editar`}
-                          >
-                            Editar
-                          </a>
-                          <form action="/api/cadastros/contratos" method="post">
-                            <input type="hidden" name="action" value="generate_financial" />
-                            <input type="hidden" name="contractId" value={contract.id} />
-                            <button className="ghost-button compact-button" type="submit" disabled={contract.status !== "ativo"}>Gerar financeiro</button>
-                          </form>
-                          <form action="/api/cadastros/contratos" method="post">
-                            <input type="hidden" name="action" value="issue_nfse" />
-                            <input type="hidden" name="contractId" value={contract.id} />
-                            <button className="primary-button compact-button" type="submit" disabled={contract.status !== "ativo"}>Emitir NFS-e</button>
-                          </form>
-                          <form action="/api/cadastros/contratos" method="post">
-                            <input type="hidden" name="action" value="issue_charge" />
-                            <input type="hidden" name="contractId" value={contract.id} />
-                            <button
-                              className="ghost-button compact-button"
-                              type="submit"
-                              disabled={contract.status !== "ativo" || !interCredential}
-                              title={!interCredential ? "Banco Inter inativo" : "Emitir boleto Banco Inter"}
+                  allContracts.map((contract) => {
+                    const client = getClient(contract);
+                    const location = getClientLocation(client?.address);
+
+                    return (
+                      <tr key={contract.id}>
+                        <td>
+                          <strong>{getClientName(contract)}</strong>
+                          <div className="muted">
+                            {[formatBrazilianDocument(client?.document), location].filter(Boolean).join(" - ")}
+                          </div>
+                        </td>
+                        <td>{contract.service_description}</td>
+                        <td>{formatMoney(contract.recurring_amount)}</td>
+                        <td>Dia {contract.due_day}</td>
+                        <td><StatusBadge tone={contract.status === "ativo" ? "success" : "neutral"}>{contract.status}</StatusBadge></td>
+                        <td>{[
+                          contract.auto_generate_financial ? "Financeiro" : "",
+                          contract.auto_issue_nfse ? "NFS-e" : "",
+                          contract.auto_generate_charge ? "Boleto" : ""
+                        ].filter(Boolean).join(" · ") || "Manual"}</td>
+                        <td>
+                          <RowActionsMenu label={`Acoes do contrato de ${getClientName(contract)}`}>
+                            <a
+                              className="ghost-button button-link compact-button"
+                              href={`/cadastros/contratos/${contract.id}/editar`}
                             >
-                              Emitir boleto
-                            </button>
-                          </form>
-                        </RowActionsMenu>
-                      </td>
-                    </tr>
-                  ))
+                              Editar
+                            </a>
+                            <form action="/api/cadastros/contratos" method="post">
+                              <input type="hidden" name="action" value="generate_financial" />
+                              <input type="hidden" name="contractId" value={contract.id} />
+                              <button className="ghost-button compact-button" type="submit" disabled={contract.status !== "ativo"}>Gerar financeiro</button>
+                            </form>
+                            <form action="/api/cadastros/contratos" method="post">
+                              <input type="hidden" name="action" value="issue_nfse" />
+                              <input type="hidden" name="contractId" value={contract.id} />
+                              <button className="primary-button compact-button" type="submit" disabled={contract.status !== "ativo"}>Emitir NFS-e</button>
+                            </form>
+                            <form action="/api/cadastros/contratos" method="post">
+                              <input type="hidden" name="action" value="issue_charge" />
+                              <input type="hidden" name="contractId" value={contract.id} />
+                              <button
+                                className="ghost-button compact-button"
+                                type="submit"
+                                disabled={contract.status !== "ativo" || !interCredential}
+                                title={!interCredential ? "Banco Inter inativo" : "Emitir boleto Banco Inter"}
+                              >
+                                Emitir boleto
+                              </button>
+                            </form>
+                          </RowActionsMenu>
+                        </td>
+                      </tr>
+                    );
+                  })
                 ) : (
                   <tr>
                     <td colSpan={7}>Nenhum contrato cadastrado.</td>
