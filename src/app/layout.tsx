@@ -16,8 +16,8 @@ export const metadata: Metadata = {
   title: "ERP Servicos",
   description: "ERP web para empresas de servicos recorrentes",
   icons: {
-    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
-    shortcut: "/icon.svg"
+    icon: [{ url: "/icon.svg?v=2", type: "image/svg+xml" }],
+    shortcut: "/icon.svg?v=2"
   }
 };
 
