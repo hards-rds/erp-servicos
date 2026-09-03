@@ -1,6 +1,7 @@
 import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
 import { fetchAllReportRows } from "@/lib/reports/fetch-all";
 import type { ReportFilters, ReportResult } from "@/lib/reports/types";
+import { resolveOfficialNfseNumber } from "@/lib/fiscal/nfse-xml";
 
 type RelatedClient = { legal_name: string } | Array<{ legal_name: string }> | null;
 type EyeData = {
@@ -760,6 +761,7 @@ async function fiscalReport(filters: ReportFilters): Promise<ReportResult> {
     id: string;
     created_at: string;
     external_id: string | null;
+    response_payload: Record<string, unknown> | null;
     competence: string;
     service_amount: number | string;
     protocol: string | null;
@@ -772,7 +774,7 @@ async function fiscalReport(filters: ReportFilters): Promise<ReportResult> {
   const data = await fetchAllReportRows<Row>((from, to) => {
     let query = supabase
       .from("nfse_documents")
-      .select("id,created_at,external_id,competence,service_amount,protocol,rejection_message,status,clients(legal_name)")
+      .select("id,created_at,external_id,response_payload,competence,service_amount,protocol,rejection_message,status,clients(legal_name)")
       .eq("company_id", companyId)
       .gte("created_at", `${filters.from}T00:00:00`)
       .lte("created_at", `${filters.to}T23:59:59`)
@@ -781,7 +783,7 @@ async function fiscalReport(filters: ReportFilters): Promise<ReportResult> {
     if (filters.status) query = query.eq("status", filters.status);
     return query.range(from, to) as unknown as PromiseLike<{ data: Row[] | null; error: unknown }>;
   });
-  const rows = searchRows(data, filters.search, (row) => [row.external_id, row.protocol, row.competence, row.status, row.rejection_message, clientName(row.clients)]);
+  const rows = searchRows(data, filters.search, (row) => [resolveOfficialNfseNumber(row.external_id, row.response_payload), row.protocol, row.competence, row.status, row.rejection_message, clientName(row.clients)]);
   const authorized = rows.filter((row) => row.status === "autorizada");
 
   return {
@@ -806,7 +808,7 @@ async function fiscalReport(filters: ReportFilters): Promise<ReportResult> {
     ],
     rows: rows.map((row) => ({
       created: formatDate(row.created_at),
-      number: row.external_id || row.id.slice(0, 8),
+      number: resolveOfficialNfseNumber(row.external_id, row.response_payload) || "Sem numero oficial",
       client: clientName(row.clients),
       competence: row.competence,
       amount: formatMoney(row.service_amount),

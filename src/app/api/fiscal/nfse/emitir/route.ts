@@ -292,7 +292,7 @@ export async function POST(request: NextRequest) {
       try {
         const generated = await generateAndAttachDanfsePdf(document.id, profile.id);
         const recipient = client.fiscal_email || "";
-        const subject = `NFS-e ${result.externalId || document.id.slice(0, 8)} - Mundo Livre tecnologia`;
+        const subject = `${result.externalId ? `NFS-e ${result.externalId}` : "Documento NFS-e"} - Mundo Livre tecnologia`;
         const emailResult = await sendFiscalDocumentEmail({
           companyId: profile.company_id,
           to: recipient,

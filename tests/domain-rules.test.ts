@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { gzipSync } from "node:zlib";
 import { isValidCnpj, isValidCpf } from "../src/lib/validations/br-documents.ts";
 import { dueDateForCompetence } from "../src/lib/dates/competence.ts";
 import { generateRecurringEntry, isRecurringCompetenceDue } from "../src/domains/contracts/recurrence.ts";
@@ -247,6 +248,19 @@ test("preserva a rejeicao detalhada devolvida pela SEFIN", () => {
   assert.equal(result.ok, false);
   assert.equal(result.status, "rejeitada");
   assert.equal(result.message, "E1200 - Certificado de transmissao invalido");
+});
+
+test("recupera numero e chave oficiais do XML autorizado da SEFIN", () => {
+  const accessKey = "12345678901234567890123456789012345678901234567890";
+  const xml = `<NFSe><infNFSe Id="NFS${accessKey}"><nNFSe>987</nNFSe></infNFSe></NFSe>`;
+  const result = interpretNfseResponse({
+    retorno: { nfseXmlGZipB64: gzipSync(Buffer.from(xml)).toString("base64") }
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.status, "autorizada");
+  assert.equal(result.externalId, "987");
+  assert.equal(result.protocol, accessKey);
 });
 
 test("monta e interpreta cancelamento de NFS-e Nacional", () => {

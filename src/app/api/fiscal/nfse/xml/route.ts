@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireCompanyPermission } from "@/lib/auth/api-access";
-import { findAuthorizedNfseXml } from "@/lib/fiscal/nfse-xml";
+import { findAuthorizedNfseXml, resolveOfficialNfseNumber } from "@/lib/fiscal/nfse-xml";
 
 export const runtime = "nodejs";
 
@@ -24,11 +24,12 @@ export async function GET(request: NextRequest) {
   const xml = findAuthorizedNfseXml(document.response_payload);
   if (!xml) return NextResponse.json({ error: "XML autorizado nao encontrado." }, { status: 404 });
 
-  const number = String(document.external_id || document.id.slice(0, 8)).replace(/[^a-zA-Z0-9_-]/g, "");
+  const number = String(resolveOfficialNfseNumber(document.external_id, document.response_payload) || `sem-numero-${document.id.slice(0, 8)}`)
+    .replace(/[^a-zA-Z0-9_-]/g, "");
   return new NextResponse(xml, {
     headers: {
       "content-type": "application/xml; charset=utf-8",
-      "content-disposition": `attachment; filename="nfse-${number || document.id.slice(0, 8)}.xml"`,
+      "content-disposition": `attachment; filename="nfse-${number}.xml"`,
       "cache-control": "private, no-store"
     }
   });

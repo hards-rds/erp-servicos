@@ -3,6 +3,7 @@ import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-acce
 import { createServiceClient } from "@/lib/supabase/server";
 import { generateAndAttachDanfsePdf } from "@/lib/fiscal/danfse";
 import { logFiscalEmail, sendFiscalDocumentEmail } from "@/lib/email/fiscal-email";
+import { resolveOfficialNfseNumber } from "@/lib/fiscal/nfse-xml";
 
 export const runtime = "nodejs";
 
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
     const service = createServiceClient();
     const { data: document } = await service
       .from("nfse_documents")
-      .select("id,company_id,status,external_id,competence,clients(legal_name,fiscal_email)")
+      .select("id,company_id,status,external_id,response_payload,competence,clients(legal_name,fiscal_email)")
       .eq("id", documentId)
       .eq("company_id", profile.company_id)
       .maybeSingle();
@@ -41,7 +42,8 @@ export async function POST(request: NextRequest) {
     const client = Array.isArray(document.clients) ? document.clients[0] : document.clients;
     const recipient = client?.fiscal_email || "";
     const generated = await generateAndAttachDanfsePdf(document.id, profile.id);
-    const subject = `NFS-e ${document.external_id || document.id.slice(0, 8)} - Mundo Livre tecnologia`;
+    const number = resolveOfficialNfseNumber(document.external_id, document.response_payload);
+    const subject = `${number ? `NFS-e ${number}` : "Documento NFS-e"} - Mundo Livre tecnologia`;
     const result = await sendFiscalDocumentEmail({
       companyId: document.company_id,
       to: recipient,

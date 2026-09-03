@@ -4,12 +4,14 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 import { CompetenceFilter } from "@/components/ui/competence-filter";
 import { resolveCompetence } from "@/lib/dates/competence";
+import { resolveOfficialNfseNumber } from "@/lib/fiscal/nfse-xml";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type NfseRow = {
   id: string;
   danfse_file_id: string | null;
   external_id: string | null;
+  response_payload: Record<string, unknown> | null;
   competence: string;
   service_amount: number | string;
   status: string;
@@ -23,6 +25,10 @@ function formatMoney(value: number | string) {
 function getClientName(document: NfseRow) {
   const client = Array.isArray(document.clients) ? document.clients[0] : document.clients;
   return client?.legal_name || "-";
+}
+
+function getNfseNumber(document: NfseRow) {
+  return resolveOfficialNfseNumber(document.external_id, document.response_payload) || "Sem numero oficial";
 }
 
 function getTone(status: string) {
@@ -64,7 +70,7 @@ export default async function NotasEmitidasPage({ searchParams }: NotasEmitidasP
   const { data: documents } = profile?.company_id
     ? await supabase
       .from("nfse_documents")
-      .select("id,danfse_file_id,external_id,competence,service_amount,status,clients(legal_name,fiscal_email)")
+      .select("id,danfse_file_id,external_id,response_payload,competence,service_amount,status,clients(legal_name,fiscal_email)")
       .eq("company_id", profile.company_id)
       .eq("competence", competence)
       .in("status", ["autorizada", "cancelada"])
@@ -108,7 +114,7 @@ export default async function NotasEmitidasPage({ searchParams }: NotasEmitidasP
               {allDocuments.length ? (
                 allDocuments.map((document) => (
                   <tr key={document.id}>
-                    <td>{document.external_id || document.id.slice(0, 8)}</td>
+                    <td>{getNfseNumber(document)}</td>
                     <td>{getClientName(document)}</td>
                     <td>{document.competence}</td>
                     <td>{formatMoney(document.service_amount)}</td>

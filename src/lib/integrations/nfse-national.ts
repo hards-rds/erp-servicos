@@ -1,4 +1,5 @@
 import { buildNfseIbsCbsXml, inferTaxRegimeCode, isIbsCbsRequired, validateIbsCbsServiceData } from "../../domains/fiscal/ibs-cbs.ts";
+import { extractAuthorizedNfseIdentity } from "../fiscal/nfse-xml.ts";
 
 type Row = Record<string, unknown>;
 
@@ -303,10 +304,16 @@ export function interpretNfseResponse(body: unknown): NfseProviderResult {
     const detail = clean(error.Complemento || error.complemento);
     return [code, description, detail].filter(Boolean).join(" - ");
   }).filter(Boolean);
-  const externalId = clean(payload.idNfse || payload.numeroNfse || payload.numero_nfse || payload.numero);
-  const protocol = clean(payload.chaveAcesso || payload.chave_acesso || payload.protocolo);
+  const officialIdentity = extractAuthorizedNfseIdentity(payload);
+  const externalId = clean(payload.idNfse || payload.numeroNfse || payload.numero_nfse || payload.numero || officialIdentity.number);
+  const protocol = clean(payload.chaveAcesso || payload.chave_acesso || payload.protocolo || officialIdentity.accessKey);
   const verificationCode = clean(payload.codigoVerificacao || payload.codigo_verificacao);
-  const hasConfirmation = Boolean(externalId || protocol || verificationCode || payload.nfseXmlGZipB64);
+  const hasConfirmation = Boolean(
+    externalId ||
+    protocol ||
+    verificationCode ||
+    (officialIdentity.number && officialIdentity.accessKey)
+  );
 
   if (errors.length) {
     return {

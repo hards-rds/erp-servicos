@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import test from "node:test";
-import { findAuthorizedNfseXml } from "../src/lib/fiscal/nfse-xml.ts";
+import {
+  extractAuthorizedNfseIdentity,
+  findAuthorizedNfseXml,
+  resolveOfficialNfseNumber
+} from "../src/lib/fiscal/nfse-xml.ts";
 import { buildGovernmentDanfsePdf } from "../src/lib/pdf/government-danfse.ts";
 
 const accessKey = "12345678901234567890123456789012345678901234567890";
@@ -25,6 +29,9 @@ const authorizedXml = `<?xml version="1.0" encoding="UTF-8"?>
 test("extrai o XML autorizado aninhado e compactado no retorno da SEFIN", () => {
   const payload = { retorno: { nfseXmlGZipB64: gzipSync(Buffer.from(authorizedXml)).toString("base64") } };
   assert.equal(findAuthorizedNfseXml(payload), authorizedXml);
+  assert.deepEqual(extractAuthorizedNfseIdentity(payload), { number: "123", accessKey });
+  assert.equal(resolveOfficialNfseNumber(null, payload), "123");
+  assert.equal(resolveOfficialNfseNumber("456", payload), "456");
 });
 
 test("gera DANFSe v2.0 em PDF a partir do XML autorizado", async () => {

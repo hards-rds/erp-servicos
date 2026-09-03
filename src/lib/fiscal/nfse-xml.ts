@@ -1,4 +1,5 @@
 import { gunzipSync } from "node:zlib";
+import { DOMParser } from "@xmldom/xmldom";
 
 function decodeCandidate(value: string) {
   const text = value.trim();
@@ -38,3 +39,36 @@ export function findAuthorizedNfseXml(payload: unknown) {
     && /<(?:\w+:)?infNFSe[\s>]/i.test(xml)) || "";
 }
 
+function elementValue(document: Document, localName: string) {
+  return document.getElementsByTagNameNS("*", localName)[0]?.textContent?.trim() || "";
+}
+
+function digits(value: unknown) {
+  return String(value ?? "").replace(/\D/g, "");
+}
+
+export function extractAuthorizedNfseIdentity(payload: unknown) {
+  const xml = findAuthorizedNfseXml(payload);
+  if (!xml) return { number: "", accessKey: "" };
+
+  try {
+    const document = new DOMParser().parseFromString(xml, "application/xml");
+    const info = document.getElementsByTagNameNS("*", "infNFSe")[0];
+    const keyElement = elementValue(document, "chNFSe");
+    const keyFromId = digits(info?.getAttribute("Id"));
+    const accessKey = digits(keyElement).length === 50
+      ? digits(keyElement)
+      : keyFromId.length === 50 ? keyFromId : "";
+
+    return {
+      number: elementValue(document, "nNFSe"),
+      accessKey
+    };
+  } catch {
+    return { number: "", accessKey: "" };
+  }
+}
+
+export function resolveOfficialNfseNumber(externalId: unknown, responsePayload: unknown) {
+  return String(externalId ?? "").trim() || extractAuthorizedNfseIdentity(responsePayload).number;
+}
