@@ -101,8 +101,17 @@ export function NfseBatchQueue({
           </button>
         </div>
       </div>
-      <div className="table-wrap">
-        <table>
+      <div className="table-wrap nfse-queue-wrap">
+        <table className="nfse-queue-table">
+          <colgroup>
+            <col className="nfse-queue-selection-column" />
+            <col className="nfse-queue-entry-column" />
+            <col className="nfse-queue-client-column" />
+            <col className="nfse-queue-competence-column" />
+            <col className="nfse-queue-value-column" />
+            <col className="nfse-queue-status-column" />
+            <col className="nfse-queue-actions-column" />
+          </colgroup>
           <thead>
             <tr>
               <th className="selection-cell">
@@ -137,8 +146,8 @@ export function NfseBatchQueue({
                     onChange={(event) => toggleDocument(document.id, event.target.checked)}
                   />
                 </td>
-                <td>{document.description}</td>
-                <td>{document.clientName}</td>
+                <td><span className="nfse-queue-text" title={document.description}>{document.description}</span></td>
+                <td><span className="nfse-queue-text" title={document.clientName}>{document.clientName}</span></td>
                 <td>{document.competence}</td>
                 <td>{document.value}</td>
                 <td>

@@ -73,6 +73,11 @@ test("fila fiscal permite selecionar e emitir varias notas", () => {
   assert.match(component, /selectedIds\.length/);
   assert.match(component, /\/api\/fiscal\/nfse\/emitir/);
   assert.match(component, /productionConfirmed/);
+  assert.match(component, /className="nfse-queue-table"/);
+  assert.match(component, /className="nfse-queue-text"/);
+  const css = readFileSync(new URL("../src/app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /\.nfse-queue-table \{[\s\S]*?table-layout: fixed;[\s\S]*?min-width: 0;/);
+  assert.match(css, /\.nfse-queue-text \{[\s\S]*?-webkit-line-clamp: 2;/);
   assert.match(page, /permission_action: "emitir"/);
   assert.match(issuedPage, /Atualizar PDF/);
 });

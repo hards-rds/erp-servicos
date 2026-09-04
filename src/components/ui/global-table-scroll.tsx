@@ -26,6 +26,33 @@ function markActionsColumn(wrapper: HTMLElement) {
   });
 }
 
+function hasWideInlineForm(table: HTMLTableElement) {
+  return Array.from(table.querySelectorAll("form")).some((form) => (
+    form.querySelectorAll('input:not([type="hidden"]), select, textarea, button').length >= 3
+  ));
+}
+
+function markAdaptiveLayout(wrapper: HTMLElement) {
+  const desktop = window.matchMedia("(min-width: 1100px)").matches;
+
+  wrapper.querySelectorAll<HTMLTableElement>("table").forEach((table) => {
+    const headers = Array.from(table.querySelectorAll<HTMLTableCellElement>("thead th"));
+    const minimumWidth = Math.max(720, headers.length * 110);
+    const canFit = desktop
+      && headers.length > 0
+      && wrapper.clientWidth >= minimumWidth
+      && !hasWideInlineForm(table);
+
+    table.classList.toggle("table-adaptive-fit", canFit);
+    if (!canFit) return;
+
+    table.querySelectorAll<HTMLTableCellElement>("tbody td").forEach((cell) => {
+      const fullText = (cell.textContent || "").replace(/\s+/g, " ").trim();
+      if (fullText.length >= 24 && !cell.title) cell.title = fullText;
+    });
+  });
+}
+
 function enhanceTable(wrapper: HTMLElement): ManagedTable | null {
   const parent = wrapper.parentElement;
   if (!parent) return null;
@@ -49,9 +76,10 @@ function enhanceTable(wrapper: HTMLElement): ManagedTable | null {
   };
   const update = () => {
     if (!wrapper.isConnected) return;
+    markActionsColumn(wrapper);
+    markAdaptiveLayout(wrapper);
     spacer.style.width = `${wrapper.scrollWidth}px`;
     rail.hidden = wrapper.scrollWidth <= wrapper.clientWidth + 1;
-    markActionsColumn(wrapper);
     syncFromTable();
   };
 
@@ -74,6 +102,7 @@ function enhanceTable(wrapper: HTMLElement): ManagedTable | null {
       rail.remove();
       delete wrapper.dataset.scrollEnhanced;
       wrapper.querySelectorAll(".table-sticky-actions").forEach((table) => table.classList.remove("table-sticky-actions"));
+      wrapper.querySelectorAll(".table-adaptive-fit").forEach((table) => table.classList.remove("table-adaptive-fit"));
     }
   };
 }

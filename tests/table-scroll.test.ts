@@ -26,3 +26,12 @@ test("mantem a coluna de acoes visivel em monitores desktop", () => {
   assert.match(enhancer, /normalizeHeader\(lastHeader\?\.textContent \|\| ""\) === "acoes"/);
   assert.match(css, /@media \(min-width: 981px\) \{[\s\S]*?\.table-sticky-actions td:last-child \{[\s\S]*?position: sticky;[\s\S]*?right: 0;/);
 });
+
+test("ajusta globalmente as tabelas que cabem na largura disponivel", () => {
+  assert.match(enhancer, /window\.matchMedia\("\(min-width: 1100px\)"\)/);
+  assert.match(enhancer, /const minimumWidth = Math\.max\(720, headers\.length \* 110\)/);
+  assert.match(enhancer, /!hasWideInlineForm\(table\)/);
+  assert.match(enhancer, /table\.classList\.toggle\("table-adaptive-fit", canFit\)/);
+  assert.match(css, /@media \(min-width: 1100px\) \{[\s\S]*?\.table-adaptive-fit \{[\s\S]*?table-layout: fixed;[\s\S]*?min-width: 0 !important;/);
+  assert.match(css, /\.table-adaptive-fit th,[\s\S]*?white-space: normal;/);
+});
