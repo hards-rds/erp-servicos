@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
+import { resolveCompetence } from "@/lib/dates/competence";
 import { runRecurringAutomation } from "@/server/services/recurrence-automation-service";
 import { tenantHasFeature } from "@/server/services/saas-plan-service";
 
 export async function POST(request: NextRequest) {
+  const formData = await request.formData();
+  const competence = resolveCompetence(String(formData.get("competence") || ""));
   const access = await requireCompanyPermission({ module: "configuracoes.gerais", action: "configurar" });
   if (!access.ok) {
     if (access.reason === "unauthorized") return NextResponse.redirect(new URL("/login", request.url), 303);
@@ -14,7 +17,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const summary = await runRecurringAutomation({ companyId: access.profile.company_id });
+    const summary = await runRecurringAutomation({ companyId: access.profile.company_id, competence });
     await writeCompanyAudit({
       companyId: access.profile.company_id,
       actorId: access.profile.id,
@@ -28,6 +31,7 @@ export async function POST(request: NextRequest) {
     target.searchParams.set("partial", String(summary.partial));
     target.searchParams.set("failed", String(summary.failed));
     target.searchParams.set("alerts", String(summary.alerts));
+    target.searchParams.set("competence", summary.competence);
     return NextResponse.redirect(target, 303);
   } catch {
     return NextResponse.redirect(new URL("/configuracoes/automacoes?status=error", request.url), 303);

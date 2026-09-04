@@ -37,14 +37,16 @@ export default async function AutomationsPage({ searchParams }: PageProps) {
     sourceNames.set(enrollment.id, `Mensalidade - ${athlete?.full_name || "Atleta"}`);
   }
   const issues = runs.filter((run) => ["parcial", "erro"].includes(run.status)).length;
+  const processedPartial = Number(params?.partial || 0);
+  const processedFailed = Number(params?.failed || 0);
   const message = params?.status === "processed"
-    ? { kind: "success", text: `Processamento concluido: ${params.processed || 0} recorrencias, ${params.partial || 0} com pendencias, ${params.failed || 0} com erro e ${params.alerts || 0} alertas financeiros analisados.` }
+    ? { kind: processedFailed > 0 ? "error" : processedPartial > 0 ? "warning" : "success", text: `Processamento concluido: ${params.processed || 0} recorrencias, ${processedPartial} com pendencias, ${processedFailed} com erro e ${params.alerts || 0} alertas financeiros analisados.` }
     : params?.status ? { kind: "error", text: params.status === "forbidden" ? "Seu perfil nao pode executar automacoes." : params.status === "plan_feature" ? "Automacoes recorrentes exigem o plano Pro ou Enterprise." : "Nao foi possivel executar as automacoes agora." } : null;
 
   return <>
-    <PageHeader area="Configuracoes / Automacoes" title="Automacoes recorrentes" description="Controle competencias financeiras, fila fiscal e cobrancas da empresa ativa." action={<form action="/api/configuracoes/automacoes" method="post"><button className="primary-button" type="submit">Executar agora</button></form>} />
+    <PageHeader area="Configuracoes / Automacoes" title="Automacoes recorrentes" description="Controle competencias financeiras, fila fiscal e cobrancas da empresa ativa." action={<form action="/api/configuracoes/automacoes" method="post"><input type="hidden" name="competence" value={competence} /><button className="primary-button" type="submit">Executar agora</button></form>} />
     <CompetenceFilter value={competence} pathname="/configuracoes/automacoes" />
-    {message ? <div className={message.kind === "success" ? "form-success" : "form-error"}>{message.text}</div> : null}
+    {message ? <div className={message.kind === "success" ? "form-success" : message.kind === "warning" ? "form-warning" : "form-error"}>{message.text}</div> : null}
     <section className="metrics dashboard-metrics">
       <MetricCard label="Financeiro automatico" value={String(financialResult.count || 0)} detail="contratos ativos" />
       <MetricCard label="Fila de NFS-e" value={String(nfseResult.count || 0)} detail="sempre exige conferencia" />
@@ -52,7 +54,7 @@ export default async function AutomationsPage({ searchParams }: PageProps) {
       {company?.service_segment === "escola_futebol" ? <MetricCard label="Mensalidades automaticas" value={String(enrollmentResult.count || 0)} detail="matriculas ativas" /> : null}
       <MetricCard label="Pendencias recentes" value={String(issues)} detail="execucoes parciais ou com erro" />
     </section>
-    <section className="table-panel"><div className="table-panel-heading"><div><h2>Historico de processamento</h2><span className="muted">Cada origem e competencia sao processadas uma unica vez.</span></div><a className="ghost-button button-link" href={company?.service_segment === "escola_futebol" ? "/escola/matriculas" : "/cadastros/contratos"}>Configurar recorrencias</a></div><div className="table-wrap"><table><thead><tr><th>Inicio</th><th>Origem</th><th>Competencia</th><th>Status</th><th>Detalhes</th></tr></thead><tbody>
+    <section className="table-panel"><div className="table-panel-heading"><div><h2>Historico de processamento</h2><span className="muted">Falhas e competencias com documento cancelado podem ser retomadas com seguranca.</span></div><a className="ghost-button button-link" href={company?.service_segment === "escola_futebol" ? "/escola/matriculas" : "/cadastros/contratos"}>Configurar recorrencias</a></div><div className="table-wrap"><table><thead><tr><th>Inicio</th><th>Origem</th><th>Competencia</th><th>Status</th><th>Detalhes</th></tr></thead><tbody>
       {runs.length ? runs.map((run) => <tr key={run.id}><td>{dateTime(run.started_at)}</td><td>{sourceNames.get(run.source_id) || "Recorrencia"}</td><td>{run.competence}</td><td><StatusBadge tone={run.status === "concluido" ? "success" : run.status === "erro" ? "warning" : "neutral"}>{run.status}</StatusBadge></td><td>{run.error_message || run.result?.warnings?.join(" ") || `Finalizado em ${dateTime(run.finished_at)}`}</td></tr>) : <tr><td colSpan={5}>Nenhuma competencia automatizada ainda.</td></tr>}
     </tbody></table></div></section>
   </>;

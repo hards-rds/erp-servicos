@@ -15,6 +15,7 @@
   --success: #4ade80;
   --danger-text: #ffc4c4;
   --success-text: #bbf7d0;
+  --warning-text: #ffe1a3;
   --accent-text: #12100a;
   --nav-active: #ffd98b;
   --input: #090a0c;
@@ -48,6 +49,7 @@
   --success: #16834f;
   --danger-text: #b42318;
   --success-text: #027a48;
+  --warning-text: #8a5a00;
   --accent-text: #17120a;
   --nav-active: #875900;
   --input: #ffffff;
@@ -195,6 +197,14 @@ textarea:focus {
   border-radius: var(--radius);
   background: rgba(74, 222, 128, 0.1);
   color: var(--success-text);
+  padding: 11px 12px;
+}
+
+.form-warning {
+  border: 1px solid rgba(244, 183, 64, 0.42);
+  border-radius: var(--radius);
+  background: rgba(244, 183, 64, 0.11);
+  color: var(--warning-text);
   padding: 11px 12px;
 }
 
@@ -1505,6 +1515,61 @@ summary:focus-visible {
   overflow: auto;
   margin-inline: -8px;
   padding-inline: 8px;
+  scrollbar-gutter: stable;
+}
+
+.table-scroll-top {
+  position: sticky;
+  top: 68px;
+  z-index: 3;
+  height: 15px;
+  margin: 0 -8px 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-block: 1px solid var(--line);
+  background: var(--panel);
+  scrollbar-color: var(--muted) var(--panel-2);
+  scrollbar-width: thin;
+}
+
+.table-scroll-top[hidden] {
+  display: none;
+}
+
+.table-scroll-top-spacer {
+  height: 1px;
+}
+
+.table-scroll-top::-webkit-scrollbar,
+.table-wrap::-webkit-scrollbar {
+  height: 10px;
+}
+
+.table-scroll-top::-webkit-scrollbar-track,
+.table-wrap::-webkit-scrollbar-track {
+  background: var(--panel-2);
+}
+
+.table-scroll-top::-webkit-scrollbar-thumb,
+.table-wrap::-webkit-scrollbar-thumb {
+  border: 2px solid var(--panel-2);
+  border-radius: 4px;
+  background: var(--muted);
+}
+
+@media (min-width: 981px) {
+  .table-sticky-actions th:last-child,
+  .table-sticky-actions td:last-child {
+    position: sticky;
+    right: 0;
+    z-index: 1;
+    background: var(--panel);
+    box-shadow: -1px 0 0 var(--line);
+  }
+
+  .table-sticky-actions th:last-child {
+    z-index: 2;
+  }
 }
 
 table {
@@ -2083,6 +2148,10 @@ tbody tr:last-child td {
     overflow: visible;
   }
 
+  .table-scroll-top {
+    display: none;
+  }
+
   table,
   .report-table {
     min-width: 0;
@@ -2441,6 +2510,17 @@ tbody tr:last-child td {
   .table-wrap {
     margin-inline: -4px;
     padding-inline: 4px;
+  }
+
+  .table-scroll-top {
+    top: 62px;
+    margin-inline: -4px;
+  }
+}
+
+@media (max-width: 760px) {
+  .table-scroll-top {
+    display: none;
   }
 }
 
