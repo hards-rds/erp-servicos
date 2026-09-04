@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
 import { createServiceClient } from "@/lib/supabase/server";
 import { generateAndAttachDanfsePdf } from "@/lib/fiscal/danfse";
+import { resolveOfficialNfseNumber } from "@/lib/fiscal/nfse-xml";
 import { downloadPrivateFile, type StoredFile } from "@/lib/files/app-files";
+import { buildAttachmentContentDisposition, buildDanfseDownloadFileName } from "@/lib/files/download-name";
 
 export const runtime = "nodejs";
 
@@ -28,7 +30,7 @@ async function requireDocumentAccess(documentId: string) {
 
   const { data: document } = await supabase
     .from("nfse_documents")
-    .select("id,company_id,danfse_file_id,status")
+    .select("id,company_id,danfse_file_id,status,external_id,response_payload,clients(legal_name)")
     .eq("id", documentId)
     .eq("company_id", profile.company_id)
     .maybeSingle();
@@ -64,11 +66,18 @@ export async function GET(request: NextRequest) {
     if (!file) return redirectWith(request, "not_found", "Arquivo do DANFSe nao encontrado.");
 
     const content = await downloadPrivateFile(file as StoredFile);
-    const fileName = file.storage_path.split("/").pop() || "danfse.pdf";
+    const relatedClient = Array.isArray(access.document.clients)
+      ? access.document.clients[0]
+      : access.document.clients;
+    const nfseNumber = resolveOfficialNfseNumber(
+      access.document.external_id,
+      access.document.response_payload
+    ) || access.document.id.slice(0, 8);
+    const fileName = buildDanfseDownloadFileName(relatedClient?.legal_name, nfseNumber);
     return new NextResponse(content, {
       headers: {
         "content-type": file.content_type || "application/pdf",
-        "content-disposition": `attachment; filename="${fileName}"`
+        "content-disposition": buildAttachmentContentDisposition(fileName)
       }
     });
   } catch (error) {

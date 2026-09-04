@@ -8,6 +8,7 @@ type ReceiveEntryFormProps = {
   entryId: string;
   description: string;
   amount: number | string;
+  competence: string;
   canReceive: boolean;
   canDelete: boolean;
 };
@@ -16,7 +17,7 @@ function formatMoney(value: number | string) {
   return Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-export function EntryActions({ entryId, description, amount, canReceive, canDelete }: ReceiveEntryFormProps) {
+export function EntryActions({ entryId, description, amount, competence, canReceive, canDelete }: ReceiveEntryFormProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const today = new Date().toISOString().slice(0, 10);
 
@@ -33,7 +34,7 @@ export function EntryActions({ entryId, description, amount, canReceive, canDele
         </button>
       ) : null}
       <form
-        action="/api/financeiro/entradas"
+        action={`/api/financeiro/entradas?competence=${competence}`}
         method="post"
         onSubmit={(event) => {
           const confirmed = window.confirm(
@@ -70,7 +71,7 @@ export function EntryActions({ entryId, description, amount, canReceive, canDele
             <X aria-hidden="true" />
           </button>
         </div>
-        <form className="form-stack" action="/api/financeiro/entradas" method="post">
+        <form className="form-stack" action={`/api/financeiro/entradas?competence=${competence}`} method="post">
           <input type="hidden" name="action" value="receive" />
           <input type="hidden" name="entryId" value={entryId} />
           <div className="form-grid">

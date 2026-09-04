@@ -17,8 +17,15 @@ function parseMoney(value: string) {
   return Number.isFinite(amount) ? amount : null;
 }
 
-function redirectWith(request: NextRequest, status: string) {
-  return NextResponse.redirect(new URL(`/financeiro/entradas?status=${status}`, request.url), 303);
+function redirectWith(request: NextRequest, status: string, message?: string, competence?: string) {
+  const target = new URL("/financeiro/entradas", request.url);
+  target.searchParams.set("status", status);
+  const selectedCompetence = competence || request.nextUrl.searchParams.get("competence") || "";
+  if (/^\d{4}-(0[1-9]|1[0-2])$/.test(selectedCompetence)) {
+    target.searchParams.set("competence", selectedCompetence);
+  }
+  if (message) target.searchParams.set("message", message);
+  return NextResponse.redirect(target, 303);
 }
 
 export async function POST(request: NextRequest) {
@@ -34,6 +41,82 @@ export async function POST(request: NextRequest) {
     return redirectWith(request, access.reason === "forbidden" ? "forbidden" : "profile_error");
   }
   const { supabase, profile } = access;
+
+  if (action === "receive_batch") {
+    const entryIds = [...new Set(
+      formData.getAll("entryIds").map((value) => String(value).trim()).filter(Boolean)
+    )].slice(0, 100);
+    const receivedAt = readString(formData, "receivedAt") || new Date().toISOString().slice(0, 10);
+    const paymentMethod = readString(formData, "paymentMethod");
+    const paymentNotes = readString(formData, "paymentNotes") || null;
+    const competence = readString(formData, "competence");
+
+    if (!entryIds.length || !paymentMethod) return redirectWith(request, "invalid", undefined, competence);
+
+    const { data: entries, error: entriesError } = await supabase
+      .from("financial_entries")
+      .select("id,net_amount,status")
+      .eq("company_id", profile.company_id)
+      .in("id", entryIds);
+
+    if (entriesError || !entries || entries.length !== entryIds.length) {
+      return redirectWith(request, "invalid", undefined, competence);
+    }
+    if (entries.some((entry) => ["cancelado", "recebido", "conciliado"].includes(entry.status))) {
+      return redirectWith(
+        request,
+        "invalid",
+        "Um ou mais lancamentos selecionados ja foram baixados, conciliados ou cancelados. Atualize a tela e tente novamente.",
+        competence
+      );
+    }
+
+    let received = 0;
+    const updatedAt = new Date().toISOString();
+    for (const entry of entries) {
+      const receivedAmount = Number(entry.net_amount);
+      const { data: updatedEntries, error } = await supabase
+        .from("financial_entries")
+        .update({
+          status: "recebido",
+          received_at: receivedAt,
+          received_amount: receivedAmount,
+          payment_method: paymentMethod,
+          payment_notes: paymentNotes,
+          updated_by: profile.id,
+          updated_at: updatedAt
+        })
+        .eq("id", entry.id)
+        .eq("company_id", profile.company_id)
+        .not("status", "in", "(cancelado,recebido,conciliado)")
+        .select("id");
+
+      if (error || !updatedEntries?.length) continue;
+
+      await supabase
+        .from("sales")
+        .update({ status: "recebida", updated_by: profile.id, updated_at: updatedAt })
+        .eq("financial_entry_id", entry.id)
+        .eq("company_id", profile.company_id);
+
+      await writeCompanyAudit({
+        companyId: profile.company_id,
+        actorId: profile.id,
+        entity: "financial_entry",
+        entityId: entry.id,
+        action: "receive",
+        metadata: { receivedAt, paymentMethod, receivedAmount, batch: true }
+      });
+      received += 1;
+    }
+
+    const failed = entries.length - received;
+    const status = failed ? "batch_partial" : "batch_received";
+    const message = failed
+      ? `${received} baixa(s) registrada(s) e ${failed} nao processada(s). Confira os lancamentos e tente novamente.`
+      : `${received} baixa(s) registrada(s) com sucesso.`;
+    return redirectWith(request, status, message, competence);
+  }
 
   if (action === "delete") {
     if (!entryId) return redirectWith(request, "delete_invalid");

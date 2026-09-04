@@ -1,6 +1,5 @@
 import { PageHeader } from "@/components/layout/page-header";
-import { EntryActions } from "@/components/finance/receive-entry-form";
-import { StatusBadge } from "@/components/ui/status-badge";
+import { EntriesBatchTable, type FinancialEntryTableRow } from "@/components/finance/entries-batch-table";
 import { CompetenceFilter } from "@/components/ui/competence-filter";
 import { resolveCompetence } from "@/lib/dates/competence";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -19,11 +18,13 @@ type EntryRow = {
 };
 
 type EntradasPageProps = {
-  searchParams?: Promise<{ status?: string; competence?: string }>;
+  searchParams?: Promise<{ status?: string; competence?: string; message?: string }>;
 };
 
 const statusMessages: Record<string, { kind: "success" | "error"; text: string }> = {
   received: { kind: "success", text: "Baixa registrada e entrada marcada como recebida." },
+  batch_received: { kind: "success", text: "Baixas registradas com sucesso." },
+  batch_partial: { kind: "error", text: "Parte das baixas nao pode ser registrada." },
   invalid: { kind: "error", text: "Revise lancamento, valor e forma de pagamento." },
   receive_error: { kind: "error", text: "Nao foi possivel registrar a baixa agora." },
   profile_error: { kind: "error", text: "Seu usuario ainda nao esta vinculado a uma empresa." },
@@ -41,33 +42,18 @@ const statusMessages: Record<string, { kind: "success" | "error"; text: string }
   delete_error: { kind: "error", text: "Nao foi possivel excluir a entrada agora." }
 };
 
-function formatMoney(value: number | string) {
-  return Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-function formatDate(value: string) {
-  return new Date(`${value}T00:00:00`).toLocaleDateString("pt-BR");
-}
-
 function getClientName(entry: EntryRow) {
   const client = Array.isArray(entry.clients) ? entry.clients[0] : entry.clients;
   return client?.legal_name || "-";
 }
 
-function getTone(status: string) {
-  if (["recebido", "conciliado"].includes(status)) return "success" as const;
-  if (["aguardando_pagamento", "vencido", "emitido"].includes(status)) return "warning" as const;
-  return "neutral" as const;
-}
-
-function canReceive(entry: EntryRow) {
-  return !["recebido", "conciliado", "cancelado"].includes(entry.status);
-}
-
 export default async function EntradasPage({ searchParams }: EntradasPageProps) {
   const params = await searchParams;
   const competence = resolveCompetence(params?.competence);
-  const message = params?.status ? statusMessages[params.status] : null;
+  const statusMessage = params?.status ? statusMessages[params.status] : null;
+  const message = params?.message && statusMessage
+    ? { ...statusMessage, text: params.message }
+    : statusMessage;
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   const { data: profile } = user
@@ -83,6 +69,18 @@ export default async function EntradasPage({ searchParams }: EntradasPageProps) 
       .limit(100)
     : { data: [] };
   const allEntries = (entries || []) as EntryRow[];
+  const tableEntries: FinancialEntryTableRow[] = allEntries.map((entry) => ({
+    id: entry.id,
+    description: entry.description,
+    clientName: getClientName(entry),
+    competence: entry.competence,
+    dueDate: entry.due_date,
+    receivedAt: entry.received_at,
+    receivedAmount: entry.received_amount,
+    netAmount: entry.net_amount,
+    paymentMethod: entry.payment_method,
+    status: entry.status
+  }));
 
   return (
     <>
@@ -94,60 +92,7 @@ export default async function EntradasPage({ searchParams }: EntradasPageProps) 
       />
       <CompetenceFilter value={competence} pathname="/financeiro/entradas" />
       {message ? <div className={message.kind === "success" ? "form-success" : "form-error"}>{message.text}</div> : null}
-      <section className="table-panel">
-        <h2>Lancamentos</h2>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Descricao</th>
-                <th>Cliente</th>
-                <th>Competencia</th>
-                <th>Vencimento</th>
-                <th>Valor liquido</th>
-                <th>Recebimento</th>
-                <th>Status</th>
-                <th>Acoes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {allEntries.length ? (
-                allEntries.map((entry) => (
-                  <tr key={entry.id}>
-                    <td>{entry.description}</td>
-                    <td>{getClientName(entry)}</td>
-                    <td>{entry.competence}</td>
-                    <td>{formatDate(entry.due_date)}</td>
-                    <td>{formatMoney(entry.net_amount)}</td>
-                    <td>
-                      {entry.received_at ? (
-                        <>
-                          <strong>{formatMoney(entry.received_amount || entry.net_amount)}</strong>
-                          <div className="muted">{formatDate(entry.received_at)} · {entry.payment_method || "-"}</div>
-                        </>
-                      ) : "-"}
-                    </td>
-                    <td><StatusBadge tone={getTone(entry.status)}>{entry.status}</StatusBadge></td>
-                    <td>
-                      <EntryActions
-                        entryId={entry.id}
-                        description={entry.description}
-                        amount={entry.net_amount}
-                        canReceive={canReceive(entry)}
-                        canDelete={!entry.received_at && !["recebido", "conciliado"].includes(entry.status)}
-                      />
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={8}>Nenhuma entrada financeira cadastrada.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <EntriesBatchTable entries={tableEntries} competence={competence} />
     </>
   );
 }

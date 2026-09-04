@@ -8,6 +8,10 @@ import {
   resolveOfficialNfseNumber
 } from "../src/lib/fiscal/nfse-xml.ts";
 import { buildGovernmentDanfsePdf } from "../src/lib/pdf/government-danfse.ts";
+import {
+  buildAttachmentContentDisposition,
+  buildDanfseDownloadFileName
+} from "../src/lib/files/download-name.ts";
 
 const accessKey = "12345678901234567890123456789012345678901234567890";
 const authorizedXml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -38,6 +42,15 @@ test("gera DANFSe v2.0 em PDF a partir do XML autorizado", async () => {
   const pdf = await buildGovernmentDanfsePdf(authorizedXml);
   assert.equal(pdf.subarray(0, 5).toString("ascii"), "%PDF-");
   assert.ok(pdf.length > 5000);
+});
+
+test("nomeia o download do DANFSe com o cliente e o numero oficial", () => {
+  const fileName = buildDanfseDownloadFileName("Otica Sao Jose Ltda.", "123/2026");
+  assert.equal(fileName, "Otica-Sao-Jose-Ltda-NFSe-123-2026.pdf");
+  assert.equal(
+    buildAttachmentContentDisposition("Ótica-São-José-NFSe-123.pdf"),
+    "attachment; filename=\"Otica-Sao-Jose-NFSe-123.pdf\"; filename*=UTF-8''%C3%93tica-S%C3%A3o-Jos%C3%A9-NFSe-123.pdf"
+  );
 });
 
 test("empacota as fontes padrao do PDFKit nas rotas que geram DANFSe", () => {
