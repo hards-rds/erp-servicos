@@ -1,7 +1,5 @@
 import { PageHeader } from "@/components/layout/page-header";
-import { NfseCancelForm } from "@/components/fiscal/nfse-cancel-form";
-import { StatusBadge } from "@/components/ui/status-badge";
-import { RowActionsMenu } from "@/components/ui/row-actions-menu";
+import { IssuedNfseTable, type IssuedNfseDocument } from "@/components/fiscal/issued-nfse-table";
 import { CompetenceFilter } from "@/components/ui/competence-filter";
 import { resolveCompetence } from "@/lib/dates/competence";
 import { resolveOfficialNfseNumber } from "@/lib/fiscal/nfse-xml";
@@ -29,12 +27,6 @@ function getClientName(document: NfseRow) {
 
 function getNfseNumber(document: NfseRow) {
   return resolveOfficialNfseNumber(document.external_id, document.response_payload) || "Sem numero oficial";
-}
-
-function getTone(status: string) {
-  if (["autorizada"].includes(status)) return "success" as const;
-  if (["enfileirada", "validada", "enviada", "rejeitada", "erro_integracao"].includes(status)) return "warning" as const;
-  return "neutral" as const;
 }
 
 type NotasEmitidasPageProps = {
@@ -78,6 +70,15 @@ export default async function NotasEmitidasPage({ searchParams }: NotasEmitidasP
       .limit(100)
     : { data: [] };
   const allDocuments = (documents || []) as NfseRow[];
+  const tableDocuments: IssuedNfseDocument[] = allDocuments.map((document) => ({
+    id: document.id,
+    number: getNfseNumber(document),
+    clientName: getClientName(document),
+    competence: document.competence,
+    value: formatMoney(document.service_amount),
+    status: document.status,
+    hasPdf: Boolean(document.danfse_file_id)
+  }));
   const message = params?.status ? statusMessages[params.status] : null;
   const cancellationEnabled = process.env.NFSE_ENV === "production"
     && process.env.NFSE_PRODUCTION_ENABLED === "true"
@@ -96,74 +97,12 @@ export default async function NotasEmitidasPage({ searchParams }: NotasEmitidasP
           {params?.message || message.text}
         </div>
       ) : null}
-      <section className="table-panel">
-        <h2>Documentos fiscais</h2>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Numero</th>
-                <th>Cliente</th>
-                <th>Competencia</th>
-                <th>Valor</th>
-                <th>Status</th>
-                <th>Acoes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {allDocuments.length ? (
-                allDocuments.map((document) => (
-                  <tr key={document.id}>
-                    <td>{getNfseNumber(document)}</td>
-                    <td>{getClientName(document)}</td>
-                    <td>{document.competence}</td>
-                    <td>{formatMoney(document.service_amount)}</td>
-                    <td><StatusBadge tone={getTone(document.status)}>{document.status}</StatusBadge></td>
-                    <td>
-                      <RowActionsMenu label={`Acoes da NFS-e de ${getClientName(document)}`}>
-                        {["autorizada", "cancelada"].includes(document.status) ? (
-                          <>
-                            <a className="ghost-button compact-button button-link" href={`/api/fiscal/nfse/xml?id=${document.id}`}>
-                              Baixar XML
-                            </a>
-                            {document.danfse_file_id ? (
-                              <>
-                                <a className="ghost-button compact-button button-link" href={`/api/fiscal/nfse/danfse?id=${document.id}`}>
-                                  Baixar PDF
-                                </a>
-                                <form action="/api/fiscal/nfse/danfse" method="post">
-                                  <input type="hidden" name="nfseDocumentId" value={document.id} />
-                                  <button className="ghost-button compact-button" type="submit">Atualizar PDF</button>
-                                </form>
-                              </>
-                            ) : (
-                              <form action="/api/fiscal/nfse/danfse" method="post">
-                                <input type="hidden" name="nfseDocumentId" value={document.id} />
-                                <button className="ghost-button compact-button" type="submit">Gerar PDF</button>
-                              </form>
-                            )}
-                            <form action="/api/fiscal/nfse/enviar-email" method="post">
-                              <input type="hidden" name="nfseDocumentId" value={document.id} />
-                              <button className="ghost-button compact-button" type="submit">Enviar email</button>
-                            </form>
-                          </>
-                        ) : null}
-                        {document.status === "autorizada" && canCancel ? (
-                          <NfseCancelForm documentId={document.id} enabled={cancellationEnabled} />
-                        ) : null}
-                      </RowActionsMenu>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={6}>Nenhuma nota emitida.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <IssuedNfseTable
+        documents={tableDocuments}
+        competence={competence}
+        canCancel={Boolean(canCancel)}
+        cancellationEnabled={cancellationEnabled}
+      />
     </>
   );
 }

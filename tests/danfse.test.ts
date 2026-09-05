@@ -79,8 +79,8 @@ test("DANFSe segue as secoes fiscais do layout nacional v2", () => {
 
 test("fila fiscal permite selecionar e emitir varias notas", () => {
   const component = readFileSync(new URL("../src/components/fiscal/nfse-batch-queue.tsx", import.meta.url), "utf8");
+  const issuedComponent = readFileSync(new URL("../src/components/fiscal/issued-nfse-table.tsx", import.meta.url), "utf8");
   const page = readFileSync(new URL("../src/app/(dashboard)/fiscal/emissao-nfse/page.tsx", import.meta.url), "utf8");
-  const issuedPage = readFileSync(new URL("../src/app/(dashboard)/fiscal/notas-emitidas/page.tsx", import.meta.url), "utf8");
   assert.match(component, /Selecionar todas as notas da fila/);
   assert.match(component, /Emitir selecionadas/);
   assert.match(component, /selectedIds\.length/);
@@ -92,5 +92,21 @@ test("fila fiscal permite selecionar e emitir varias notas", () => {
   assert.match(css, /\.nfse-queue-table \{[\s\S]*?table-layout: fixed;[\s\S]*?min-width: 0;/);
   assert.match(css, /\.nfse-queue-text \{[\s\S]*?-webkit-line-clamp: 2;/);
   assert.match(page, /permission_action: "emitir"/);
-  assert.match(issuedPage, /Atualizar PDF/);
+  assert.match(issuedComponent, /Atualizar PDF/);
+});
+
+test("notas emitidas permitem selecionar e baixar varios PDFs em ZIP", () => {
+  const component = readFileSync(new URL("../src/components/fiscal/issued-nfse-table.tsx", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../src/app/(dashboard)/fiscal/notas-emitidas/page.tsx", import.meta.url), "utf8");
+  const packageJson = readFileSync(new URL("../package.json", import.meta.url), "utf8");
+
+  assert.match(component, /Selecionar todas as notas emitidas/);
+  assert.match(component, /Baixar selecionadas/);
+  assert.match(component, /new JSZip\(\)/);
+  assert.match(component, /Math\.min\(4, selectedDocuments\.length\)/);
+  assert.match(component, /\/api\/fiscal\/nfse\/danfse\?id=/);
+  assert.match(component, /notas-fiscais-\$\{competence\}\.zip/);
+  assert.match(component, /buildDanfseDownloadFileName/);
+  assert.match(page, /<IssuedNfseTable/);
+  assert.match(packageJson, /"jszip": "\^3\.10\.1"/);
 });
