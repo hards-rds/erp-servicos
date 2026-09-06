@@ -15,6 +15,7 @@ type ContractorRow = {
   cost_allowance_amount: number | string;
   commission_rate: number | string;
   commission_basis: string;
+  commission_client_ids: string[] | null;
   due_day: number;
   active: boolean;
 };
@@ -45,7 +46,7 @@ export default async function ColaboradoresPage({ searchParams }: { searchParams
     : { data: null };
   const { data } = profile?.company_id
     ? await supabase.from("contractors")
-      .select("id,legal_name,trade_name,tax_id,role_title,fixed_monthly_amount,cost_allowance_amount,commission_rate,commission_basis,due_day,active")
+      .select("id,legal_name,trade_name,tax_id,role_title,fixed_monthly_amount,cost_allowance_amount,commission_rate,commission_basis,commission_client_ids,due_day,active")
       .eq("company_id", profile.company_id)
       .order("legal_name")
     : { data: [] };
@@ -92,7 +93,7 @@ export default async function ColaboradoresPage({ searchParams }: { searchParams
                     <td>{contractor.role_title}</td>
                     <td>{formatMoney(contractor.fixed_monthly_amount)}</td>
                     <td>{formatMoney(contractor.cost_allowance_amount)}</td>
-                    <td>{Number(contractor.commission_rate).toLocaleString("pt-BR", { maximumFractionDigits: 4 })}%<small className="table-secondary">{contractorCommissionBasisLabel(contractor.commission_basis)}</small></td>
+                    <td>{Number(contractor.commission_rate).toLocaleString("pt-BR", { maximumFractionDigits: 4 })}%<small className="table-secondary">{contractorCommissionBasisLabel(contractor.commission_basis)}</small><small className="table-secondary">{contractor.commission_client_ids === null ? "Todos os clientes" : `${contractor.commission_client_ids.length} cliente(s) selecionado(s)`}</small></td>
                     <td>Dia {contractor.due_day}</td>
                     <td><StatusBadge tone={contractor.active ? "success" : "neutral"}>{contractor.active ? "ativo" : "inativo"}</StatusBadge></td>
                     <td><ContractorActions id={contractor.id} name={name} /></td>

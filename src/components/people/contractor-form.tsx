@@ -1,3 +1,5 @@
+import { CommissionClientSelector, type CommissionClientOption } from "@/components/people/commission-client-selector";
+
 type ContractorFormValues = {
   id?: string;
   legalName?: string;
@@ -11,6 +13,7 @@ type ContractorFormValues = {
   costAllowanceAmount?: number | string;
   commissionRate?: number | string;
   commissionBasis?: "contracted" | "received";
+  commissionClientIds?: string[] | null;
   dueDay?: number;
   startsAt?: string;
   endsAt?: string;
@@ -26,10 +29,12 @@ function decimalValue(value: number | string | undefined) {
 export function ContractorForm({
   action,
   submitLabel,
+  clients,
   initialValues = {}
 }: {
   action: "create" | "update";
   submitLabel: string;
+  clients: CommissionClientOption[];
   initialValues?: ContractorFormValues;
 }) {
   const today = new Date().toISOString().slice(0, 10);
@@ -96,6 +101,7 @@ export function ContractorForm({
             </select>
           </label>
         </div>
+        <CommissionClientSelector clients={clients} initialClientIds={initialValues.commissionClientIds} />
       </fieldset>
 
       <div className="form-grid">

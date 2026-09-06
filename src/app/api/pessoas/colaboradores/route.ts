@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireCompanyPermission, writeCompanyAudit } from "@/lib/auth/api-access";
 import { isValidCnpj, onlyDigits } from "@/lib/validations/br-documents";
+import { parseCommissionClients } from "@/domains/people/commission-clients";
 
 function readString(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
@@ -130,6 +131,8 @@ export async function POST(request: NextRequest) {
   const startsAt = readString(formData, "startsAt");
   const endsAt = readString(formData, "endsAt");
   const commissionBasis = readString(formData, "commissionBasis");
+  const commissionClients = parseCommissionClients(readString(formData, "commissionClientScope"), formData.getAll("commissionClientIds"));
+  if (!commissionClients.valid) return redirectTo(request, action === "update" && contractorId ? `/pessoas/colaboradores/${contractorId}/editar` : "/pessoas/colaboradores/novo", "invalid_clients");
   const invalid = !legalName || !isValidCnpj(taxId) || !readString(formData, "roleTitle")
     || fixedAmount === null || fixedAmount < 0 || costAllowance === null || costAllowance < 0
     || commissionRate === null || commissionRate < 0 || commissionRate > 100
@@ -151,6 +154,7 @@ export async function POST(request: NextRequest) {
     cost_allowance_amount: costAllowance,
     commission_rate: commissionRate,
     commission_basis: commissionBasis,
+    commission_client_ids: commissionClients.clientIds,
     due_day: dueDay,
     starts_at: startsAt,
     ends_at: endsAt || null,
@@ -163,7 +167,8 @@ export async function POST(request: NextRequest) {
   if (action === "update") {
     if (!contractorId) return redirectTo(request, "/pessoas/colaboradores", "invalid");
     const { error } = await supabase.from("contractors").update(payload).eq("id", contractorId).eq("company_id", profile.company_id);
-    if (!error) await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "contractor", entityId: contractorId, action: "update" });
+    if (error?.message.includes("contractor_commission_invalid_clients")) return redirectTo(request, `/pessoas/colaboradores/${contractorId}/editar`, "invalid_clients");
+    if (!error) await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "contractor", entityId: contractorId, action: "update", metadata: { commissionClientIds: commissionClients.clientIds } });
     return redirectTo(request, error ? `/pessoas/colaboradores/${contractorId}/editar` : "/pessoas/colaboradores", error ? "error" : "updated");
   }
 
@@ -173,6 +178,7 @@ export async function POST(request: NextRequest) {
     ...payload,
     created_by: profile.id
   }).select("id").single();
-  if (!error && created) await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "contractor", entityId: created.id, action: "create" });
+  if (error?.message.includes("contractor_commission_invalid_clients")) return redirectTo(request, "/pessoas/colaboradores/novo", "invalid_clients");
+  if (!error && created) await writeCompanyAudit({ companyId: profile.company_id, actorId: profile.id, entity: "contractor", entityId: created.id, action: "create", metadata: { commissionClientIds: commissionClients.clientIds } });
   return redirectTo(request, "/pessoas/colaboradores", error ? "error" : "created");
 }

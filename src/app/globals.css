@@ -2032,6 +2032,27 @@ tbody tr:last-child td {
   margin-top: 2px;
 }
 
+.contractor-client-selector {
+  margin-top: 20px;
+}
+
+.contractor-client-options {
+  max-height: 320px;
+  overflow-y: auto;
+  display: grid;
+  gap: 0;
+}
+
+.contractor-client-options .checkbox-row {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.contractor-client-options .checkbox-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .settings-list {
   display: grid;
   gap: 12px;

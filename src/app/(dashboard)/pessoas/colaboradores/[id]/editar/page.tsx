@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ContractorForm } from "@/components/people/contractor-form";
 import { PageHeader } from "@/components/layout/page-header";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { loadContractorClients } from "@/lib/contractor-clients";
 
 export default async function EditarPrestadorPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams?: Promise<{ status?: string }> }) {
   const { id } = await params;
@@ -13,6 +14,7 @@ export default async function EditarPrestadorPage({ params, searchParams }: { pa
   if (!profile?.company_id) notFound();
   const { data: contractor } = await supabase.from("contractors").select("*").eq("id", id).eq("company_id", profile.company_id).maybeSingle();
   if (!contractor) notFound();
+  const clients = await loadContractorClients(supabase, profile.company_id);
   const name = contractor.trade_name || contractor.legal_name;
 
   return (
@@ -25,8 +27,9 @@ export default async function EditarPrestadorPage({ params, searchParams }: { pa
       />
       {query?.status === "invalid" ? <div className="form-error">Revise o CNPJ, a vigencia e os valores informados.</div> : null}
       {query?.status === "error" ? <div className="form-error">Nao foi possivel atualizar o prestador.</div> : null}
+      {query?.status === "invalid_clients" ? <div className="form-error">Selecione pelo menos um cliente valido para a comissao.</div> : null}
       <section className="form-panel page-form-panel">
-        <ContractorForm action="update" submitLabel="Salvar prestador" initialValues={{
+        <ContractorForm action="update" submitLabel="Salvar prestador" clients={clients} initialValues={{
           id: contractor.id,
           legalName: contractor.legal_name,
           tradeName: contractor.trade_name || "",
@@ -39,6 +42,7 @@ export default async function EditarPrestadorPage({ params, searchParams }: { pa
           costAllowanceAmount: contractor.cost_allowance_amount,
           commissionRate: contractor.commission_rate,
           commissionBasis: contractor.commission_basis,
+          commissionClientIds: contractor.commission_client_ids,
           dueDay: contractor.due_day,
           startsAt: contractor.starts_at,
           endsAt: contractor.ends_at || "",
