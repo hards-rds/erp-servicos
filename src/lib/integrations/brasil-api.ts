@@ -18,6 +18,13 @@ type BrasilApiCnpj = {
   descricao_situacao_cadastral?: string;
 };
 
+type BrasilApiCep = {
+  street?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+};
+
 export type CnpjRegistration = {
   document: string;
   legalName: string;
@@ -72,7 +79,33 @@ export async function lookupCnpjRegistration(
   const legalName = String(data.razao_social || "").trim();
   if (!legalName) throw new Error("A consulta do CNPJ nao retornou a razao social.");
   const streetType = String(data.descricao_tipo_de_logradouro || "").trim();
-  const streetName = String(data.logradouro || "").trim();
+  let streetName = String(data.logradouro || "").trim();
+  let district = String(data.bairro || "").trim();
+  let city = String(data.municipio || "").trim();
+  let state = String(data.uf || "").trim();
+  const zipCode = String(data.cep || "").replace(/\D/g, "");
+
+  if (!streetName && /^\d{8}$/.test(zipCode)) {
+    try {
+      const cepResponse = await fetcher(`https://brasilapi.com.br/api/cep/v2/${zipCode}`, {
+        cache: "no-store",
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "erp-servicos/1.0"
+        }
+      });
+      if (cepResponse.ok) {
+        const cepData = (await cepResponse.json()) as BrasilApiCep;
+        streetName = String(cepData.street || "").trim();
+        district ||= String(cepData.neighborhood || "").trim();
+        city ||= String(cepData.city || "").trim();
+        state ||= String(cepData.state || "").trim();
+      }
+    } catch {
+      // The CNPJ result remains useful even if the optional CEP enrichment is unavailable.
+    }
+  }
+
   const street = streetType && streetName && !streetName.toLocaleUpperCase("pt-BR").startsWith(`${streetType.toLocaleUpperCase("pt-BR")} `)
     ? `${streetType} ${streetName}`.trim()
     : streetName;
@@ -89,11 +122,11 @@ export async function lookupCnpjRegistration(
       street,
       number: String(data.numero || "").trim(),
       complement: String(data.complemento || "").trim(),
-      district: String(data.bairro || "").trim(),
-      city: String(data.municipio || "").trim(),
+      district,
+      city,
       cityCode: String(data.codigo_municipio_ibge || "").trim(),
-      state: String(data.uf || "").trim(),
-      zipCode: String(data.cep || "").trim()
+      state,
+      zipCode
     }
   };
 }

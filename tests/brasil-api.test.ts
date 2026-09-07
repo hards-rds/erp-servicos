@@ -24,6 +24,38 @@ test("normaliza os dados cadastrais retornados pela consulta de CNPJ", async () 
   assert.equal(registration.registrationStatus, "ATIVA");
 });
 
+test("completa o logradouro pelo CEP quando o cadastro do CNPJ nao informa a rua", async () => {
+  const requests: string[] = [];
+  const fetcher = (async (input: string | URL | Request) => {
+    const url = String(input);
+    requests.push(url);
+    if (url.includes("/api/cep/")) {
+      return new Response(JSON.stringify({
+        street: "Rua Nova Ponte",
+        neighborhood: "Granada",
+        city: "Uberlandia",
+        state: "MG"
+      }), { status: 200 });
+    }
+    return new Response(JSON.stringify({
+      cnpj: "46425404000128",
+      razao_social: "46.425.404 ALINE MIRANDA SANTOS",
+      bairro: "GRANADA",
+      municipio: "UBERLANDIA",
+      uf: "MG",
+      cep: "38410-623",
+      logradouro: ""
+    }), { status: 200 });
+  }) as typeof fetch;
+
+  const registration = await lookupCnpjRegistration("46.425.404/0001-28", fetcher);
+
+  assert.equal(registration.address.street, "Rua Nova Ponte");
+  assert.equal(registration.address.zipCode, "38410623");
+  assert.equal(requests.length, 2);
+  assert.match(requests[1], /\/api\/cep\/v2\/38410623$/);
+});
+
 test("atualiza identidade e endereco oficial sem apagar contatos operacionais", () => {
   const registered = mergeClientRegistration({
     legal_name: "Planetfone",
