@@ -95,6 +95,30 @@ test("fila fiscal permite selecionar e emitir varias notas", () => {
   assert.match(issuedComponent, /Atualizar PDF/);
 });
 
+test("emissao fiscal pode gerar boleto e enviar os dois documentos ao email fiscal", () => {
+  const form = readFileSync(new URL("../src/components/fiscal/nfse-process-form.tsx", import.meta.url), "utf8");
+  const batch = readFileSync(new URL("../src/components/fiscal/nfse-batch-queue.tsx", import.meta.url), "utf8");
+  const route = readFileSync(new URL("../src/app/api/fiscal/nfse/emitir/route.ts", import.meta.url), "utf8");
+  const resendRoute = readFileSync(new URL("../src/app/api/fiscal/nfse/enviar-email/route.ts", import.meta.url), "utf8");
+  const flow = readFileSync(new URL("../src/server/services/contract-recurring-flow.ts", import.meta.url), "utf8");
+
+  assert.match(form, /name="issueCharge"/);
+  assert.match(form, /Deseja emitir o boleto do Banco Inter e enviar os dois PDFs ao e-mail fiscal/);
+  assert.match(batch, /formData\.set\("issueCharge", "true"\)/);
+  assert.match(route, /permission_module: "financeiro\.cobrancas"/);
+  assert.match(route, /tenantHasFeature\(profile\.tenant_id, "api_integrations"\)/);
+  assert.match(route, /ensureContractCharge/);
+  assert.match(route, /processInterCharge/);
+  assert.match(route, /getInterChargePdfWithRetry/);
+  assert.match(route, /attachments\.push/);
+  assert.match(route, /if \(!emailResult\.ok\) throw/);
+  assert.match(resendRoute, /issueChargeRequested === true/);
+  assert.match(resendRoute, /getStoredInterChargePdf/);
+  assert.match(resendRoute, /DANFSe e boleto enviados/);
+  assert.match(flow, /\.eq\("financial_entry_id", entry\.entryId\)/);
+  assert.match(flow, /\.neq\("status", "cancelada"\)/);
+});
+
 test("notas emitidas permitem selecionar e baixar varios PDFs em ZIP", () => {
   const component = readFileSync(new URL("../src/components/fiscal/issued-nfse-table.tsx", import.meta.url), "utf8");
   const page = readFileSync(new URL("../src/app/(dashboard)/fiscal/notas-emitidas/page.tsx", import.meta.url), "utf8");

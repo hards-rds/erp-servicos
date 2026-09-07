@@ -6,7 +6,11 @@ import { generateAndAttachDanfsePdf } from "@/lib/fiscal/danfse";
 import { logFiscalEmail, sendFiscalDocumentEmail } from "@/lib/email/fiscal-email";
 import { dueDateForCompetence } from "@/lib/dates/competence";
 import { lookupCnpjRegistration, registrationChangesClientName } from "@/lib/integrations/brasil-api";
+import { loadActiveInterCredentials } from "@/lib/integrations/inter-credentials";
 import { onlyDigits } from "@/lib/validations/br-documents";
+import { ensureContractCharge } from "@/server/services/contract-recurring-flow";
+import { getStoredInterChargePdf, processInterCharge } from "@/server/services/inter-charge-service";
+import { tenantHasFeature } from "@/server/services/saas-plan-service";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -28,13 +32,26 @@ function row(value: unknown): Row {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Row : {};
 }
 
+async function getInterChargePdfWithRetry(companyId: string, chargeId: string, actorId: string) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await getStoredInterChargePdf(companyId, chargeId, actorId);
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 750 * (attempt + 1)));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("O boleto foi emitido, mas o PDF ainda nao esta disponivel no Banco Inter.");
+}
+
 async function ensureAuthorizedFinancialEntry(input: {
   supabase: Awaited<ReturnType<typeof import("@/lib/supabase/server").createServerSupabaseClient>>;
   companyId: string;
   profileId: string;
   documentId: string;
   clientId: string;
-  existingEntry: { id: string; status: string } | null;
+  existingEntry: { id: string; status: string; due_date: string } | null;
   contract: { id: string; due_day: number; service_description: string } | null;
   competence: string;
   amount: number | string;
@@ -70,13 +87,13 @@ async function ensureAuthorizedFinancialEntry(input: {
   const { data: created, error } = await input.supabase
     .from("financial_entries")
     .insert(payload)
-    .select("id,status")
+    .select("id,status,due_date")
     .single();
   if (!error && created) return created;
 
   const { data: existing } = await input.supabase
     .from("financial_entries")
-    .select("id,status")
+    .select("id,status,due_date")
     .eq("company_id", input.companyId)
     .eq("idempotency_key", idempotencyKey)
     .maybeSingle();
@@ -109,6 +126,7 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const nfseDocumentId = String(formData.get("nfseDocumentId") || "").trim();
+    const issueCharge = formData.get("issueCharge") === "true";
     if (!nfseDocumentId) return redirectWith(request, "invalid");
     if (
       process.env.NFSE_ENV === "production"
@@ -116,6 +134,27 @@ export async function POST(request: NextRequest) {
       && formData.get("productionConfirmed") !== "true"
     ) {
       return redirectWithMessage(request, "rejected", "Confirme explicitamente a emissao real em producao.");
+    }
+    if (issueCharge) {
+      const { data: canIssueCharge } = await supabase.rpc("app_has_permission", {
+        permission_module: "financeiro.cobrancas",
+        permission_action: "emitir"
+      });
+      if (!canIssueCharge) {
+        return redirectWithMessage(request, "forbidden", "Seu usuario nao possui permissao para emitir boletos.");
+      }
+      if (!(await tenantHasFeature(profile.tenant_id, "api_integrations"))) {
+        return redirectWithMessage(request, "rejected", "O plano atual nao possui integracao com o Banco Inter.");
+      }
+      try {
+        await loadActiveInterCredentials(profile.company_id);
+      } catch (error) {
+        return redirectWithMessage(
+          request,
+          "rejected",
+          error instanceof Error ? error.message : "Banco Inter nao configurado para esta empresa."
+        );
+      }
     }
 
     const { data: document } = await supabase
@@ -131,7 +170,7 @@ export async function POST(request: NextRequest) {
         request_payload,
         companies(name,document,fiscal_settings),
         clients(legal_name,trade_name,document,fiscal_email,phone,address),
-        financial_entries(id,contract_id,description,competence,net_amount,status,contracts(fiscal_service_data))
+        financial_entries(id,contract_id,description,competence,due_date,net_amount,status,contracts(fiscal_service_data))
       `)
       .eq("id", nfseDocumentId)
       .eq("company_id", profile.company_id)
@@ -242,7 +281,7 @@ export async function POST(request: NextRequest) {
         protocol: result.protocol || null,
         external_id: result.externalId || null,
         rejection_message: result.ok ? null : result.message,
-        request_payload: { ...requestPayload, ...(result.requestPayload || {}) },
+        request_payload: { ...requestPayload, ...(result.requestPayload || {}), issueChargeRequested: issueCharge },
         response_payload: result.responsePayload || { message: result.message, provider: result.provider },
         updated_at: new Date().toISOString()
       })
@@ -257,6 +296,7 @@ export async function POST(request: NextRequest) {
       created_by: profile.id
     });
 
+    let responseMessage = result.message;
     if (result.ok && result.status === "autorizada") {
       const authorizedEntry = await ensureAuthorizedFinancialEntry({
         supabase,
@@ -264,7 +304,7 @@ export async function POST(request: NextRequest) {
         profileId: profile.id,
         documentId: document.id,
         clientId: document.client_id,
-        existingEntry: entry ? { id: entry.id, status: entry.status } : null,
+        existingEntry: entry ? { id: entry.id, status: entry.status, due_date: entry.due_date } : null,
         contract,
         competence: document.competence,
         amount: document.service_amount,
@@ -292,35 +332,76 @@ export async function POST(request: NextRequest) {
       try {
         const generated = await generateAndAttachDanfsePdf(document.id, profile.id);
         const recipient = client.fiscal_email || "";
-        const subject = `${result.externalId ? `NFS-e ${result.externalId}` : "Documento NFS-e"} - Mundo Livre tecnologia`;
+        const attachments = [{
+          filename: generated.fileName,
+          content: generated.content,
+          contentType: "application/pdf"
+        }];
+        let chargeId: string | null = null;
+
+        if (issueCharge) {
+          chargeId = await ensureContractCharge({
+            supabase,
+            companyId: profile.company_id,
+            actorId: profile.id,
+            contractId: contract?.id || document.id,
+            clientId: document.client_id,
+            description: emissionEntry.description,
+            amount: Number(document.service_amount),
+            dueDay: Number(contract?.due_day || 10)
+          }, {
+            entryId: authorizedEntry.id,
+            competence: document.competence,
+            dueDate: authorizedEntry.due_date
+          });
+          if (!chargeId) throw new Error("Nao foi possivel preparar o boleto do Banco Inter.");
+
+          const chargeResult = await processInterCharge(profile.company_id, chargeId, profile.id);
+          if (!chargeResult.ok) throw new Error(chargeResult.message || "Banco Inter recusou a emissao do boleto.");
+
+          const boletoPdf = await getInterChargePdfWithRetry(profile.company_id, chargeId, profile.id);
+          attachments.push({
+            filename: `boleto-${document.competence}.pdf`,
+            content: boletoPdf,
+            contentType: "application/pdf"
+          });
+        }
+
+        const subject = `${result.externalId ? `NFS-e ${result.externalId}` : "Documento NFS-e"}${issueCharge ? " e boleto" : ""} - Mundo Livre tecnologia`;
         const emailResult = await sendFiscalDocumentEmail({
           companyId: profile.company_id,
           to: recipient,
           subject,
           html: `
             <p>Ola, ${client.legal_name}.</p>
-            <p>Segue em anexo o DANFSe referente a competencia ${document.competence}.</p>
+            <p>Segue em anexo o DANFSe${issueCharge ? " e o boleto do Banco Inter" : ""} referente${issueCharge ? "s" : ""} a competencia ${document.competence}.</p>
             <p>Atenciosamente,<br/>Mundo Livre tecnologia</p>
           `,
-          attachments: [{
-            filename: generated.fileName,
-            content: generated.content,
-            contentType: "application/pdf"
-          }]
+          attachments
         });
         await logFiscalEmail({
           companyId: profile.company_id,
           recipient: recipient || "-",
           subject,
           result: emailResult,
-          metadata: { nfseDocumentId: document.id, automatic: true }
+          metadata: { nfseDocumentId: document.id, boletoChargeId: chargeId, automatic: true, combined: issueCharge }
         });
+        if (!emailResult.ok) throw new Error(emailResult.error || "Nao foi possivel enviar o e-mail fiscal.");
+        responseMessage = issueCharge
+          ? "NFS-e e boleto emitidos e enviados ao e-mail fiscal do cliente."
+          : "NFS-e autorizada e enviada ao e-mail fiscal do cliente.";
       } catch (postProcessError) {
+        const postProcessMessage = postProcessError instanceof Error
+          ? postProcessError.message
+          : "Nao foi possivel concluir o envio automatico.";
+        responseMessage = issueCharge
+          ? `NFS-e autorizada, mas o boleto ou o e-mail ficou pendente: ${postProcessMessage}`
+          : `NFS-e autorizada, mas o e-mail ficou pendente: ${postProcessMessage}`;
         await supabase.from("nfse_events").insert({
           nfse_document_id: document.id,
           status: "pos_emissao_pendente",
-          message: postProcessError instanceof Error ? postProcessError.message : "Nao foi possivel gerar/enviar DANFSe automaticamente.",
-          payload: { automatic: true },
+          message: postProcessMessage,
+          payload: { automatic: true, issueChargeRequested: issueCharge },
           created_by: profile.id
         });
       }
@@ -332,13 +413,13 @@ export async function POST(request: NextRequest) {
       entity: "nfse_document",
       entityId: document.id,
       action: "emit",
-      metadata: { status: result.status, provider: result.provider }
+      metadata: { status: result.status, provider: result.provider, issueCharge }
     });
 
     return redirectWithMessage(
       request,
       result.status === "autorizada" ? "processed" : result.ok ? "queued" : "rejected",
-      result.message
+      responseMessage
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha na emissao fiscal.";

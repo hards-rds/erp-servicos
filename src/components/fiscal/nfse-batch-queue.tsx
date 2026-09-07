@@ -36,6 +36,7 @@ export function NfseBatchQueue({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [issueCharges, setIssueCharges] = useState(false);
   const selectAllRef = useRef<HTMLInputElement>(null);
   const allSelected = documents.length > 0 && selectedIds.length === documents.length;
 
@@ -54,7 +55,7 @@ export function NfseBatchQueue({
   async function emitSelected() {
     if (!selectedIds.length || processing || !canEmit) return;
     const confirmation = realProduction
-      ? `Confirmar a emissao real de ${selectedIds.length} NFS-e(s) em producao?`
+      ? `Confirmar a emissao real de ${selectedIds.length} NFS-e(s) em producao${issueCharges ? ", com boleto do Banco Inter" : ""}?`
       : `Validar ${selectedIds.length} NFS-e(s) selecionada(s)?`;
     if (!window.confirm(confirmation)) return;
 
@@ -66,6 +67,7 @@ export function NfseBatchQueue({
       const formData = new FormData();
       formData.set("nfseDocumentId", selectedIds[index]);
       if (realProduction) formData.set("productionConfirmed", "true");
+      if (realProduction && issueCharges) formData.set("issueCharge", "true");
 
       try {
         const response = await fetch("/api/fiscal/nfse/emitir", {
@@ -95,6 +97,17 @@ export function NfseBatchQueue({
           <p>Selecione uma ou mais notas para validar e emitir em sequencia.</p>
         </div>
         <div className="batch-toolbar">
+          {realProduction ? (
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={issueCharges}
+                disabled={processing}
+                onChange={(event) => setIssueCharges(event.target.checked)}
+              />
+              <span>Emitir boletos e enviar os dois PDFs por e-mail</span>
+            </label>
+          ) : null}
           <span>{selectedIds.length} selecionada(s)</span>
           <button className="primary-button compact-button" type="button" disabled={!selectedIds.length || processing || !canEmit} onClick={emitSelected}>
             {processing ? `Processando ${progress}/${selectedIds.length}` : realProduction ? "Emitir selecionadas" : "Validar selecionadas"}

@@ -175,6 +175,17 @@ export async function ensureContractNfse(
 }
 
 export async function ensureContractCharge(input: ContractFlowInput, entry: ContractEntry) {
+  const { data: linkedCharge } = await input.supabase
+    .from("boleto_charges")
+    .select("id")
+    .eq("company_id", input.companyId)
+    .eq("financial_entry_id", entry.entryId)
+    .neq("status", "cancelada")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (linkedCharge?.id) return linkedCharge.id as string;
+
   const chargeKey = `inter-charge:${entry.entryId}:${entry.dueDate}`;
   const payload = {
     company_id: input.companyId,

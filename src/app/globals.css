@@ -385,6 +385,21 @@ textarea {
   white-space: nowrap;
 }
 
+.batch-toolbar .checkbox-row span {
+  white-space: normal;
+}
+
+.nfse-emission-form {
+  display: grid;
+  gap: 10px;
+  max-width: 560px;
+}
+
+.nfse-emission-form .checkbox-row span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .selection-cell {
   width: 42px;
   min-width: 42px;
