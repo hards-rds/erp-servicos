@@ -6,6 +6,21 @@ import type { InterRuntimeCredentials } from "@/lib/integrations/inter-credentia
 type JsonRow = Record<string, unknown>;
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
+export type InterListedCharge = {
+  externalId: string;
+  seuNumero: string;
+  situation: string;
+  issuedAt: string;
+  dueDate: string;
+  amount: number;
+  payerName: string;
+  payerDocument: string;
+  barcode: string;
+  digitableLine: string;
+  pixCopyPaste: string;
+  payload: JsonRow;
+};
+
 const productionBaseUrl = "https://cdpj.partners.bancointer.com.br";
 const sandboxBaseUrl = "https://cdpj-sandbox.partners.uatinter.co";
 const tokenCache = new Map<string, { token: string; expiresAt: number }>();
@@ -229,6 +244,79 @@ export async function getInterCharge(codigoSolicitacao: string, credentials: Int
   const payload = parseJson(response.body);
   if (response.statusCode < 200 || response.statusCode >= 300) throw new Error(responseError(payload, response.statusCode));
   return payload;
+}
+
+function listedCharge(value: unknown): InterListedCharge | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const payload = value as JsonRow;
+  const charge = payload.cobranca && typeof payload.cobranca === "object" && !Array.isArray(payload.cobranca)
+    ? payload.cobranca as JsonRow
+    : payload;
+  const payer = charge.pagador && typeof charge.pagador === "object" && !Array.isArray(charge.pagador)
+    ? charge.pagador as JsonRow
+    : {};
+  const boleto = payload.boleto && typeof payload.boleto === "object" && !Array.isArray(payload.boleto)
+    ? payload.boleto as JsonRow
+    : {};
+  const pix = payload.pix && typeof payload.pix === "object" && !Array.isArray(payload.pix)
+    ? payload.pix as JsonRow
+    : {};
+  const externalId = clean(charge.codigoSolicitacao || payload.codigoSolicitacao);
+  if (!externalId) return null;
+
+  return {
+    externalId,
+    seuNumero: clean(charge.seuNumero),
+    situation: clean(charge.situacao),
+    issuedAt: clean(charge.dataEmissao),
+    dueDate: clean(charge.dataVencimento),
+    amount: Number(String(charge.valorNominal ?? "0").replace(",", ".")) || 0,
+    payerName: clean(payer.nome),
+    payerDocument: onlyDigits(payer.cpfCnpj),
+    barcode: clean(boleto.codigoBarras),
+    digitableLine: clean(boleto.linhaDigitavel),
+    pixCopyPaste: clean(pix.pixCopiaECola),
+    payload
+  };
+}
+
+export async function listInterCharges(input: {
+  from: string;
+  to: string;
+  maxPages?: number;
+}, credentials: InterRuntimeCredentials) {
+  const charges: InterListedCharge[] = [];
+  const maxPages = Math.max(1, Math.min(input.maxPages || 20, 100));
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const query = new URLSearchParams({
+      dataInicial: input.from,
+      dataFinal: input.to,
+      filtrarDataPor: "VENCIMENTO",
+      "paginacao.itensPorPagina": "1000",
+      "paginacao.paginaAtual": String(page),
+      ordenarPor: "DATA_VENCIMENTO",
+      tipoOrdenacao: "ASC"
+    });
+    const response = await authorizedRequest(credentials, {
+      method: "GET",
+      path: `/cobranca/v3/cobrancas?${query.toString()}`
+    });
+    const payload = parseJson(response.body);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw new Error(responseError(payload, response.statusCode));
+    }
+
+    const pageCharges = Array.isArray(payload.cobrancas)
+      ? payload.cobrancas.map(listedCharge).filter((charge): charge is InterListedCharge => Boolean(charge))
+      : [];
+    charges.push(...pageCharges);
+    const lastPage = payload.ultimaPagina === true;
+    const totalPages = Number(payload.totalPaginas || 0);
+    if (lastPage || pageCharges.length === 0 || (totalPages > 0 && page + 1 >= totalPages)) break;
+  }
+
+  return charges;
 }
 
 export async function cancelInterCharge(codigoSolicitacao: string, reason: string, credentials: InterRuntimeCredentials) {

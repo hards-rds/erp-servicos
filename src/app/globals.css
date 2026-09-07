@@ -1580,6 +1580,17 @@ summary:focus-visible {
   scrollbar-gutter: stable;
 }
 
+.inter-link-form {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.inter-link-form select {
+  min-width: 0;
+}
+
 .table-scroll-top {
   position: sticky;
   top: 68px;

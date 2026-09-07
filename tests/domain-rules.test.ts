@@ -316,8 +316,11 @@ test("valida cobranca Inter e idempotencia", () => {
 
 test("traduz retorno do Inter para o fluxo financeiro", () => {
   assert.equal(mapInterChargeStatus("RECEBIDO"), "paga");
+  assert.equal(mapInterChargeStatus("MARCADO_RECEBIDO"), "paga");
   assert.equal(mapInterChargeStatus("A_RECEBER"), "aguardando_pagamento");
+  assert.equal(mapInterChargeStatus("ATRASADO"), "vencida");
   assert.equal(mapInterChargeStatus("EXPIRADO"), "vencida");
+  assert.equal(mapInterChargeStatus("FALHA_EMISSAO"), "erro_integracao");
   assert.equal(mapInterChargeStatus("CANCELADO"), "cancelada");
 });
 

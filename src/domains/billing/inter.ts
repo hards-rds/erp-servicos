@@ -29,9 +29,10 @@ export function validateChargeDraft(draft: ChargeDraft, environment: "sandbox" |
 
 export function mapInterChargeStatus(value: unknown): ChargeStatus {
   const status = String(value ?? "").trim().toUpperCase();
-  if (["RECEBIDO", "PAGO", "PAGA", "LIQUIDADO"].includes(status)) return "paga";
+  if (["RECEBIDO", "MARCADO_RECEBIDO", "PAGO", "PAGA", "LIQUIDADO"].includes(status)) return "paga";
   if (["CANCELADO", "CANCELADA"].includes(status)) return "cancelada";
-  if (["VENCIDO", "VENCIDA", "EXPIRADO", "EXPIRADA"].includes(status)) return "vencida";
+  if (["VENCIDO", "VENCIDA", "ATRASADO", "EXPIRADO", "EXPIRADA", "PROTESTO"].includes(status)) return "vencida";
+  if (status === "FALHA_EMISSAO") return "erro_integracao";
   if (["A_RECEBER", "EMABERTO", "EM_ABERTO", "ATIVO", "ATIVA"].includes(status)) return "aguardando_pagamento";
   if (["EMITIDO", "EMITIDA", "REGISTRADO", "REGISTRADA"].includes(status)) return "emitida";
   return "solicitada";

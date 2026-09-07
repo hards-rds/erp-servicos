@@ -4,11 +4,15 @@ import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { CompetenceFilter } from "@/components/ui/competence-filter";
 import { resolveCompetence } from "@/lib/dates/competence";
+import { mapInterChargeStatus } from "@/domains/billing/inter";
+import type { InterListedCharge } from "@/lib/integrations/inter-client";
 import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
+import { listStoredInterCharges } from "@/server/services/inter-charge-service";
 
-type PageProps = { searchParams?: Promise<{ status?: string; competence?: string }> };
+type PageProps = { searchParams?: Promise<{ status?: string; competence?: string; inter?: string }> };
 
-type EntryRelation = { id: string; description: string; competence: string; due_date: string; net_amount: number | string; clients: { legal_name: string } | { legal_name: string }[] | null };
+type ClientRelation = { legal_name: string; document: string | null };
+type EntryRelation = { id: string; description: string; competence: string; due_date: string; net_amount: number | string; clients: ClientRelation | ClientRelation[] | null };
 type ChargeRow = {
   id: string;
   external_id: string | null;
@@ -19,7 +23,7 @@ type ChargeRow = {
   last_synced_at: string | null;
   financial_entries: EntryRelation | EntryRelation[] | null;
 };
-type EntryRow = { id: string; description: string; due_date: string; net_amount: number | string; status: string; clients: { legal_name: string } | { legal_name: string }[] | null };
+type EntryRow = { id: string; description: string; due_date: string; net_amount: number | string; status: string; clients: ClientRelation | ClientRelation[] | null };
 
 const messages: Record<string, { kind: "success" | "error"; text: string }> = {
   issued: { kind: "success", text: "Cobranca enviada ao Banco Inter. Atualize para obter os dados processados." },
@@ -31,7 +35,10 @@ const messages: Record<string, { kind: "success" | "error"; text: string }> = {
   cancel_invalid: { kind: "error", text: "Informe um motivo de cancelamento com pelo menos 5 caracteres." },
   invalid: { kind: "error", text: "Cobranca ou entrada financeira invalida." },
   plan_feature: { kind: "error", text: "Novas cobrancas integradas exigem o plano Pro ou Enterprise." },
-  profile_error: { kind: "error", text: "Seu usuario nao esta vinculado a uma empresa ativa." }
+  profile_error: { kind: "error", text: "Seu usuario nao esta vinculado a uma empresa ativa." },
+  imported: { kind: "success", text: "Cobranca do Inter vinculada e situacao financeira atualizada." },
+  import_error: { kind: "error", text: "Nao foi possivel vincular a cobranca. Atualize a consulta e tente novamente." },
+  import_invalid: { kind: "error", text: "Selecione uma entrada financeira para vincular a cobranca." }
 };
 
 function relation<T>(value: T | T[] | null) {
@@ -52,6 +59,31 @@ function getTone(status: string) {
   return "neutral" as const;
 }
 
+function onlyDigits(value: unknown) {
+  return String(value ?? "").replace(/\D/g, "");
+}
+
+function monthRange(competence: string) {
+  const [year, month] = competence.split("-").map(Number);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return { from: `${competence}-01`, to: `${competence}-${String(lastDay).padStart(2, "0")}` };
+}
+
+function suggestedEntry(charge: InterListedCharge, entries: EntryRow[]) {
+  const chargeAmount = Math.round(charge.amount * 100);
+  const candidates = entries.map((entry) => {
+    const client = relation(entry.clients);
+    let score = 0;
+    if (charge.payerDocument && onlyDigits(client?.document) === charge.payerDocument) score += 4;
+    if (Math.round(Number(entry.net_amount) * 100) === chargeAmount) score += 3;
+    if (entry.due_date === charge.dueDate) score += 2;
+    return { entry, score };
+  }).filter((candidate) => candidate.score >= 5).sort((left, right) => right.score - left.score);
+  return candidates.length === 1 || (candidates[0] && candidates[0].score > (candidates[1]?.score || 0))
+    ? candidates[0]?.entry.id || ""
+    : "";
+}
+
 export default async function BoletosCobrancasPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const competence = resolveCompetence(params?.competence);
@@ -64,20 +96,36 @@ export default async function BoletosCobrancasPage({ searchParams }: PageProps) 
   const [{ data: charges }, { data: entries }, { data: interCredential }] = profile?.company_id
     ? await Promise.all([
       supabase.from("boleto_charges")
-        .select("id,external_id,status,digitable_line,pix_qr_code,rejection_message,last_synced_at,financial_entries!inner(id,description,competence,due_date,net_amount,clients(legal_name))")
+        .select("id,external_id,status,digitable_line,pix_qr_code,rejection_message,last_synced_at,financial_entries!inner(id,description,competence,due_date,net_amount,clients(legal_name,document))")
         .eq("company_id", profile.company_id).eq("financial_entries.competence", competence).order("created_at", { ascending: false }).limit(500),
       supabase.from("financial_entries")
-        .select("id,description,due_date,net_amount,status,clients(legal_name)")
+        .select("id,description,due_date,net_amount,status,clients(legal_name,document)")
         .eq("company_id", profile.company_id)
         .eq("competence", competence)
-        .in("status", ["previsto", "emitido", "aguardando_pagamento", "vencido"])
-        .order("due_date").limit(100),
+        .neq("status", "cancelado")
+        .order("due_date").limit(1000),
       service.from("api_credentials").select("id,environment,last_test_status").eq("company_id", profile.company_id).eq("provider", "banco_inter").eq("active", true).maybeSingle()
     ])
     : [{ data: [] }, { data: [] }, { data: null }];
   const allCharges = (charges || []) as ChargeRow[];
   const chargedEntryIds = new Set(allCharges.map((charge) => relation(charge.financial_entries)?.id).filter(Boolean));
-  const availableEntries = ((entries || []) as EntryRow[]).filter((entry) => !chargedEntryIds.has(entry.id));
+  const allEntries = (entries || []) as EntryRow[];
+  const availableEntries = allEntries.filter((entry) =>
+    !chargedEntryIds.has(entry.id) && !["recebido", "conciliado"].includes(entry.status)
+  );
+  const importEntries = allEntries.filter((entry) => !chargedEntryIds.has(entry.id));
+  const linkedExternalIds = new Set(allCharges.map((charge) => charge.external_id).filter(Boolean));
+  let interCharges: InterListedCharge[] | null = null;
+  let interError = "";
+  if (params?.inter === "1" && profile?.company_id && interCredential) {
+    try {
+      const range = monthRange(competence);
+      interCharges = await listStoredInterCharges(profile.company_id, range.from, range.to);
+    } catch (error) {
+      interError = error instanceof Error ? error.message : "Falha ao consultar cobrancas no Banco Inter.";
+    }
+  }
+  const unlinkedInterCharges = (interCharges || []).filter((charge) => !linkedExternalIds.has(charge.externalId));
   const message = params?.status ? messages[params.status] : null;
 
   return (
@@ -91,6 +139,57 @@ export default async function BoletosCobrancasPage({ searchParams }: PageProps) 
       <CompetenceFilter value={competence} pathname="/financeiro/boletos-cobrancas" />
       {message ? <div className={message.kind === "success" ? "form-success" : "form-error"}>{message.text}</div> : null}
       {!interCredential ? <div className="form-error">Configure e ative o Banco Inter antes de emitir cobrancas.</div> : null}
+      <section className="table-panel">
+        <div className="table-panel-heading">
+          <div>
+            <h2>Sincronizacao inicial</h2>
+            <span className="muted">Consulte os boletos ja emitidos no Inter e confirme o vinculo com uma entrada financeira.</span>
+          </div>
+          <form method="get">
+            <input type="hidden" name="competence" value={competence} />
+            <input type="hidden" name="inter" value="1" />
+            <button className="ghost-button" type="submit" disabled={!interCredential}>Buscar no Inter</button>
+          </form>
+        </div>
+        {interError ? <div className="form-error">Banco Inter: {interError}</div> : null}
+        {interCharges ? (
+          <>
+            <p className="muted">{interCharges.length} cobranca(s) encontrada(s); {unlinkedInterCharges.length} aguardando vinculo.</p>
+            <div className="table-wrap">
+              <table className="table-adaptive-fit">
+                <thead><tr><th>Pagador</th><th>Vencimento</th><th>Valor</th><th>Status Inter</th><th>Vincular entrada</th></tr></thead>
+                <tbody>
+                  {unlinkedInterCharges.length ? unlinkedInterCharges.map((charge) => {
+                    const suggestion = suggestedEntry(charge, importEntries);
+                    return (
+                      <tr key={charge.externalId}>
+                        <td><strong>{charge.payerName || "Pagador"}</strong><div className="muted">{charge.payerDocument || "Documento nao informado"}</div></td>
+                        <td>{formatDate(charge.dueDate)}</td>
+                        <td>{formatMoney(charge.amount)}</td>
+                        <td><StatusBadge tone={getTone(mapInterChargeStatus(charge.situation))}>{charge.situation || "-"}</StatusBadge></td>
+                        <td>
+                          <form className="inter-link-form" action="/api/billing/inter/import" method="post">
+                            <input type="hidden" name="externalId" value={charge.externalId} />
+                            <input type="hidden" name="competence" value={competence} />
+                            <select name="entryId" defaultValue={suggestion} required aria-label={`Entrada para ${charge.payerName || "pagador"}`}>
+                              <option value="">Selecione a entrada</option>
+                              {importEntries.map((entry) => {
+                                const client = relation(entry.clients);
+                                return <option key={entry.id} value={entry.id}>{client?.legal_name || "Cliente"} - {formatMoney(entry.net_amount)} - {formatDate(entry.due_date)}</option>;
+                              })}
+                            </select>
+                            <button className="primary-button compact-button" type="submit">Vincular</button>
+                          </form>
+                        </td>
+                      </tr>
+                    );
+                  }) : <tr><td colSpan={5}>Todas as cobrancas encontradas ja estao vinculadas.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : <p className="muted">A consulta nao emite, altera ou cancela boletos.</p>}
+      </section>
       <section className="table-panel">
         <h2>Cobrancas</h2>
         <div className="table-wrap">

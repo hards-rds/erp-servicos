@@ -5,7 +5,8 @@ import {
   cancelInterCharge,
   createInterCharge,
   downloadInterChargePdf,
-  getInterCharge
+  getInterCharge,
+  listInterCharges
 } from "@/lib/integrations/inter-client";
 import { loadActiveInterCredentials } from "@/lib/integrations/inter-credentials";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -51,7 +52,7 @@ export async function applyInterChargePayload(input: {
   companyId: string;
   chargeId: string;
   payload: Row;
-  source: "emissao" | "consulta" | "webhook" | "cancelamento";
+  source: "emissao" | "consulta" | "webhook" | "cancelamento" | "importacao";
   actorId?: string | null;
 }) {
   const supabase = createServiceClient();
@@ -69,7 +70,7 @@ export async function applyInterChargePayload(input: {
   const digitableLine = clean(firstValue(input.payload, ["linhaDigitavel"]));
   const pixCode = clean(firstValue(input.payload, ["pixCopiaECola", "pixCopiaCola", "qrCode"]));
   const paidAmountRaw = clean(firstValue(input.payload, ["valorTotalRecebido", "valorRecebido"])).replace(",", ".");
-  const paidAmount = Number(paidAmountRaw);
+  const paidAmount = paidAmountRaw ? Number(paidAmountRaw) : Number.NaN;
   const paidAtRaw = clean(firstValue(input.payload, ["dataHoraSituacao", "dataPagamento", "dataRecebimento"]));
   const paidAt = status === "paga" ? paidAtRaw || new Date().toISOString() : null;
 
@@ -131,6 +132,120 @@ export async function applyInterChargePayload(input: {
   }
 
   return { status };
+}
+
+export async function listStoredInterCharges(companyId: string, from: string, to: string) {
+  const credentials = await loadActiveInterCredentials(companyId);
+  return listInterCharges({ from, to }, credentials);
+}
+
+export async function importStoredInterCharge(input: {
+  companyId: string;
+  entryId: string;
+  externalId: string;
+  actorId?: string | null;
+}) {
+  const supabase = createServiceClient();
+  const { data: entry, error: entryError } = await supabase
+    .from("financial_entries")
+    .select("id,status,due_date")
+    .eq("id", input.entryId)
+    .eq("company_id", input.companyId)
+    .maybeSingle();
+  if (entryError || !entry || entry.status === "cancelado") {
+    throw new Error("Entrada financeira invalida para vinculacao.");
+  }
+
+  const { data: alreadyLinked } = await supabase
+    .from("boleto_charges")
+    .select("id,financial_entry_id")
+    .eq("external_id", input.externalId)
+    .eq("company_id", input.companyId)
+    .maybeSingle();
+  if (alreadyLinked && alreadyLinked.financial_entry_id !== entry.id) {
+    throw new Error("Esta cobranca do Inter ja esta vinculada a outra entrada.");
+  }
+
+  const credentials = await loadActiveInterCredentials(input.companyId);
+  const payload = await getInterCharge(input.externalId, credentials);
+  const verifiedExternalId = clean(firstValue(payload, ["codigoSolicitacao"]));
+  if (verifiedExternalId !== input.externalId) {
+    throw new Error("O Banco Inter retornou um identificador diferente do solicitado.");
+  }
+
+  let chargeId = clean(alreadyLinked?.id);
+  if (!chargeId) {
+    const { data: draft } = await supabase
+      .from("boleto_charges")
+      .select("id")
+      .eq("company_id", input.companyId)
+      .eq("financial_entry_id", entry.id)
+      .is("external_id", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (draft?.id) {
+      const { data: updated, error } = await supabase
+        .from("boleto_charges")
+        .update({
+          external_id: input.externalId,
+          request_payload: { source: "inter_import" },
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", draft.id)
+        .eq("company_id", input.companyId)
+        .is("external_id", null)
+        .select("id")
+        .single();
+      if (error || !updated?.id) throw new Error(error?.message || "Nao foi possivel vincular a cobranca existente.");
+      chargeId = updated.id;
+    } else {
+      const { data: inserted, error } = await supabase
+        .from("boleto_charges")
+        .insert({
+          company_id: input.companyId,
+          financial_entry_id: entry.id,
+          external_id: input.externalId,
+          status: mapInterChargeStatus(firstValue(payload, ["situacao", "status"])),
+          request_payload: { source: "inter_import" },
+          response_payload: payload,
+          idempotency_key: `inter-import:${input.externalId}`
+        })
+        .select("id")
+        .single();
+      if (error || !inserted?.id) throw new Error(error?.message || "Nao foi possivel importar a cobranca.");
+      chargeId = inserted.id;
+    }
+  }
+
+  await supabase
+    .from("financial_entries")
+    .update({ charge_id: chargeId, updated_by: input.actorId || null, updated_at: new Date().toISOString() })
+    .eq("id", entry.id)
+    .eq("company_id", input.companyId);
+
+  const result = await applyInterChargePayload({
+    companyId: input.companyId,
+    chargeId,
+    payload,
+    source: "importacao",
+    actorId: input.actorId
+  });
+  if (["solicitada", "emitida", "registrada", "aguardando_pagamento", "vencida"].includes(result.status)) {
+    await supabase
+      .from("financial_entries")
+      .update({
+        status: result.status === "vencida" ? "vencido" : "aguardando_pagamento",
+        updated_by: input.actorId || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", entry.id)
+      .eq("company_id", input.companyId)
+      .not("status", "in", "(recebido,conciliado,cancelado)");
+  }
+
+  return { chargeId, status: result.status };
 }
 
 async function chargeContext(companyId: string, chargeId: string) {

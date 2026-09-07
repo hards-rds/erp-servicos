@@ -125,8 +125,11 @@ test("administracao de usuarios valida empresa do usuario e dos grupos", () => {
 
 test("operacoes do Inter derivam cobranca e entrada da empresa ativa", () => {
   const route = readFileSync("src/app/api/billing/inter/charges/route.ts", "utf8");
+  const importRoute = readFileSync("src/app/api/billing/inter/import/route.ts", "utf8");
   const webhook = readFileSync("src/app/api/webhooks/inter/cobrancas/route.ts", "utf8");
   assert.match(route, /\.eq\("company_id", profile\.company_id\)/);
+  assert.match(importRoute, /companyId: access\.profile\.company_id/);
+  assert.match(importRoute, /requireCompanyPermission\(\{ module: "financeiro\.cobrancas", action: "criar" \}\)/);
   assert.match(webhook, /getInterCharge\(externalId, credentials\)/);
   assert.match(webhook, /loadActiveInterCredentials\(charge\.company_id\)/);
 });
