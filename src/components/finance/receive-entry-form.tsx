@@ -1,6 +1,6 @@
 "use client";
 
-import { Banknote, Trash2, X } from "lucide-react";
+import { Ban, Banknote, Trash2, X } from "lucide-react";
 import { useRef } from "react";
 import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 
@@ -10,6 +10,7 @@ type ReceiveEntryFormProps = {
   amount: number | string;
   competence: string;
   canReceive: boolean;
+  canCancel: boolean;
   canDelete: boolean;
 };
 
@@ -17,7 +18,7 @@ function formatMoney(value: number | string) {
   return Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-export function EntryActions({ entryId, description, amount, competence, canReceive, canDelete }: ReceiveEntryFormProps) {
+export function EntryActions({ entryId, description, amount, competence, canReceive, canCancel, canDelete }: ReceiveEntryFormProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const today = new Date().toISOString().slice(0, 10);
 
@@ -32,6 +33,24 @@ export function EntryActions({ entryId, description, amount, competence, canRece
           <Banknote aria-hidden="true" size={16} />
           Dar baixa
         </button>
+      ) : null}
+      {canCancel ? (
+        <form
+          action={`/api/financeiro/entradas?competence=${competence}`}
+          method="post"
+          onSubmit={(event) => {
+            if (!window.confirm(`Cancelar a entrada "${description}"? O lancamento permanecera no historico.`)) {
+              event.preventDefault();
+            }
+          }}
+        >
+          <input type="hidden" name="action" value="cancel" />
+          <input type="hidden" name="entryId" value={entryId} />
+          <button className="danger-button compact-button button-with-icon" type="submit">
+            <Ban aria-hidden="true" size={16} />
+            Cancelar lancamento
+          </button>
+        </form>
       ) : null}
       <form
         action={`/api/financeiro/entradas?competence=${competence}`}

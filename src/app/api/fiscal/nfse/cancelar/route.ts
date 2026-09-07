@@ -7,6 +7,7 @@ import {
 } from "@/lib/integrations/nfse-cancellation";
 import { decodeNfseXml } from "@/lib/integrations/nfse-transport";
 import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase/server";
+import { cancelInterChargesForFinancialEntry } from "@/server/services/inter-charge-service";
 
 export const runtime = "nodejs";
 
@@ -135,14 +136,43 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      let cancelledCharges = 0;
       if (document.financial_entry_id) {
-        await service
+        try {
+          const chargeResult = await cancelInterChargesForFinancialEntry({
+            companyId: profile.company_id,
+            entryId: document.financial_entry_id,
+            reason: `NFS-e cancelada: ${reason}`,
+            actorId: profile.id
+          });
+          cancelledCharges = chargeResult.cancelled;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Falha ao cancelar o boleto vinculado.";
+          return redirectWithMessage(
+            request,
+            "cancel_partial",
+            `A NFS-e foi cancelada, mas o boleto e a entrada permaneceram ativos: ${message}`
+          );
+        }
+
+        const { error: financialError } = await service
           .from("financial_entries")
           .update({ status: "cancelado", updated_by: profile.id, updated_at: new Date().toISOString() })
           .eq("id", document.financial_entry_id)
           .eq("company_id", profile.company_id)
-          .in("status", ["previsto", "emitido"])
+          .not("status", "in", "(recebido,conciliado,cancelado)")
           .is("received_at", null);
+        if (financialError) {
+          return redirectWithMessage(
+            request,
+            "cancel_partial",
+            "A NFS-e e o boleto foram cancelados, mas nao foi possivel cancelar a entrada financeira."
+          );
+        }
+
+        result.message = cancelledCharges
+          ? "NFS-e, boleto e entrada financeira cancelados com sucesso."
+          : "NFS-e e entrada financeira canceladas com sucesso.";
       }
     }
 

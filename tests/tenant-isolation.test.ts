@@ -127,11 +127,22 @@ test("operacoes do Inter derivam cobranca e entrada da empresa ativa", () => {
   const route = readFileSync("src/app/api/billing/inter/charges/route.ts", "utf8");
   const importRoute = readFileSync("src/app/api/billing/inter/import/route.ts", "utf8");
   const webhook = readFileSync("src/app/api/webhooks/inter/cobrancas/route.ts", "utf8");
+  const service = readFileSync("src/server/services/inter-charge-service.ts", "utf8");
+  const client = readFileSync("src/lib/integrations/inter-client.ts", "utf8");
   assert.match(route, /\.eq\("company_id", profile\.company_id\)/);
   assert.match(importRoute, /companyId: access\.profile\.company_id/);
   assert.match(importRoute, /requireCompanyPermission\(\{ module: "financeiro\.cobrancas", action: "criar" \}\)/);
   assert.match(webhook, /getInterCharge\(externalId, credentials\)/);
   assert.match(webhook, /loadActiveInterCredentials\(charge\.company_id\)/);
+  assert.match(service, /lookupCnpjRegistration/);
+  assert.match(service, /clients\(id,legal_name,document,financial_email,fiscal_email,address\)/);
+  assert.match(service, /payerAddress: address/);
+  assert.match(service, /cancelInterChargesForFinancialEntry/);
+  assert.match(service, /\.eq\("company_id", input\.companyId\)/);
+  assert.match(client, /endereco: clean\(address\.street\)/);
+  assert.match(client, /cidade: clean\(address\.city\)/);
+  assert.match(client, /uf: clean\(address\.state\)\.toUpperCase\(\)/);
+  assert.match(client, /cep: onlyDigits\(address\.zipCode\)/);
 });
 
 test("contratos geram financeiro antes da fila fiscal e mantem cobranca separada", () => {
@@ -154,6 +165,15 @@ test("contratos geram financeiro antes da fila fiscal e mantem cobranca separada
   assert.match(emission, /nfse_document_id: document\.id/);
   assert.match(flow, /financial_entry_id: entry\.entryId/);
   assert.match(flow, /nfse_document_id: documentId/);
+});
+
+test("cancelamento da NFS-e cancela boleto e entrada vinculados", () => {
+  const cancellation = readFileSync("src/app/api/fiscal/nfse/cancelar/route.ts", "utf8");
+
+  assert.match(cancellation, /cancelInterChargesForFinancialEntry/);
+  assert.match(cancellation, /entryId: document\.financial_entry_id/);
+  assert.match(cancellation, /\.not\("status", "in", "\(recebido,conciliado,cancelado\)"\)/);
+  assert.match(cancellation, /cancel_partial/);
 });
 
 test("automacoes recorrentes sao idempotentes e isoladas por empresa", () => {

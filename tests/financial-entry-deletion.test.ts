@@ -74,3 +74,16 @@ test("rota de exclusao exige permissao e limita a empresa ativa", () => {
   assert.match(actions, /window\.confirm/);
   assert.match(actions, /name="action" value="delete"/);
 });
+
+test("entrada pode ser cancelada sem apagar o historico fiscal", () => {
+  const route = readFileSync("src/app/api/financeiro/entradas/route.ts", "utf8");
+  const actions = readFileSync("src/components/finance/receive-entry-form.tsx", "utf8");
+
+  assert.match(route, /action === "cancel"/);
+  assert.match(route, /\["enviada", "autorizada"\]/);
+  assert.match(route, /charge\.status !== "cancelada" && Boolean\(charge\.external_id\)/);
+  assert.match(route, /status: "cancelado"/);
+  assert.match(route, /action: "cancel"/);
+  assert.match(actions, /Cancelar lancamento/);
+  assert.match(actions, /name="action" value="cancel"/);
+});

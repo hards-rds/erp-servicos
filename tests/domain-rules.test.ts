@@ -312,6 +312,26 @@ test("valida cobranca Inter e idempotencia", () => {
     "Valor da cobranca deve ser maior que zero.",
     "Documento do pagador obrigatorio."
   ]);
+  assert.deepEqual(validateChargeDraft({
+    entryId: "e1",
+    dueDate: "2026-09-10",
+    amountCents: 10000,
+    payerDocument: "26704175000173",
+    payerName: "Cliente sem endereco"
+  }, "production"), [
+    "Endereco do pagador obrigatorio para cobranca real no Banco Inter.",
+    "Cidade do pagador obrigatoria para cobranca real no Banco Inter.",
+    "UF do pagador obrigatoria para cobranca real no Banco Inter.",
+    "CEP do pagador deve possuir 8 digitos para cobranca real no Banco Inter."
+  ]);
+  assert.deepEqual(validateChargeDraft({
+    entryId: "e1",
+    dueDate: "2026-09-10",
+    amountCents: 10000,
+    payerDocument: "26704175000173",
+    payerName: "Cliente completo",
+    payerAddress: { street: "Avenida Brasil", city: "Uberlandia", state: "MG", zipCode: "38400100" }
+  }, "production"), []);
 });
 
 test("traduz retorno do Inter para o fluxo financeiro", () => {

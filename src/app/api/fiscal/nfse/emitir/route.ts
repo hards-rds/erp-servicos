@@ -179,7 +179,7 @@ export async function POST(request: NextRequest) {
     if (!document) return redirectWith(request, "not_found");
 
     const company = Array.isArray(document.companies) ? document.companies[0] : document.companies;
-    const client = Array.isArray(document.clients) ? document.clients[0] : document.clients;
+    let client = Array.isArray(document.clients) ? document.clients[0] : document.clients;
     const entry = Array.isArray(document.financial_entries) ? document.financial_entries[0] : document.financial_entries;
     const requestPayload = row(document.request_payload);
     const contractId = entry?.contract_id || String(requestPayload.contractId || "");
@@ -222,13 +222,29 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      if (registration && registrationChangesClientName(client.legal_name, registration.legalName)) {
+      if (registration) {
+        const currentAddress = row(client.address);
+        const mergedAddress = Object.fromEntries(
+          Object.entries(registration.address).map(([key, value]) => [key, String(currentAddress[key] || value || "").trim()])
+        );
+        const nameChanged = registrationChangesClientName(client.legal_name, registration.legalName);
+        const addressChanged = Object.entries(mergedAddress).some(([key, value]) => value && value !== String(currentAddress[key] || "").trim());
+        if (!nameChanged && !addressChanged) registration = null;
+      }
+
+      if (registration) {
         const previousLegalName = client.legal_name;
+        const currentAddress = row(client.address);
+        const mergedAddress = Object.fromEntries(
+          Object.entries(registration.address).map(([key, value]) => [key, String(currentAddress[key] || value || "").trim()])
+        );
+        const nameChanged = registrationChangesClientName(previousLegalName, registration.legalName);
         const { error: clientUpdateError } = await supabase
           .from("clients")
           .update({
             legal_name: registration.legalName,
             trade_name: client.trade_name || previousLegalName,
+            address: mergedAddress,
             updated_by: profile.id,
             updated_at: new Date().toISOString()
           })
@@ -240,28 +256,32 @@ export async function POST(request: NextRequest) {
         await supabase.from("nfse_events").insert({
           nfse_document_id: document.id,
           status: document.status,
-          message: "Razao social do tomador atualizada pela consulta do CNPJ antes da emissao.",
+          message: "Dados oficiais do tomador atualizados pela consulta do CNPJ antes da emissao.",
           payload: {
             previousLegalName,
             legalName: registration.legalName,
+            addressUpdated: true,
             source: "brasilapi"
           },
           created_by: profile.id
         });
+        client = { ...client, legal_name: registration.legalName, address: mergedAddress };
         await writeCompanyAudit({
           companyId: profile.company_id,
           actorId: profile.id,
           entity: "client",
           entityId: document.client_id,
           action: "fiscal_name_sync",
-          metadata: { previousLegalName, legalName: registration.legalName, nfseDocumentId: document.id }
+          metadata: { previousLegalName, legalName: registration.legalName, addressUpdated: true, nfseDocumentId: document.id }
         });
 
-        return redirectWithMessage(
-          request,
-          "registration_updated",
-          `A razao social foi atualizada de "${previousLegalName}" para "${registration.legalName}". Confira o tomador e confirme novamente a emissao.`
-        );
+        if (nameChanged) {
+          return redirectWithMessage(
+            request,
+            "registration_updated",
+            `A razao social foi atualizada de "${previousLegalName}" para "${registration.legalName}". Confira o tomador e confirme novamente a emissao.`
+          );
+        }
       }
     }
 

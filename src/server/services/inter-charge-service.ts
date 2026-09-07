@@ -9,6 +9,7 @@ import {
   listInterCharges
 } from "@/lib/integrations/inter-client";
 import { loadActiveInterCredentials } from "@/lib/integrations/inter-credentials";
+import { lookupCnpjRegistration } from "@/lib/integrations/brasil-api";
 import { createServiceClient } from "@/lib/supabase/server";
 
 type Row = Record<string, unknown>;
@@ -17,12 +18,54 @@ function clean(value: unknown) {
   return String(value ?? "").trim();
 }
 
+function onlyDigits(value: unknown) {
+  return clean(value).replace(/\D/g, "");
+}
+
 function relation<T>(value: T | T[] | null | undefined) {
   return Array.isArray(value) ? value[0] || null : value || null;
 }
 
 function nestedRow(value: unknown) {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Row : {};
+}
+
+function payerAddress(value: unknown) {
+  const address = nestedRow(value);
+  return {
+    street: clean(address.street),
+    number: clean(address.number),
+    complement: clean(address.complement),
+    district: clean(address.district),
+    city: clean(address.city),
+    state: clean(address.state).toUpperCase(),
+    zipCode: clean(address.zipCode).replace(/\D/g, "")
+  };
+}
+
+function completePayerAddress(address: ReturnType<typeof payerAddress>) {
+  return Boolean(address.street && address.city && /^[A-Z]{2}$/.test(address.state) && /^\d{8}$/.test(address.zipCode));
+}
+
+async function resolvePayerAddress(companyId: string, client: Row) {
+  const current = payerAddress(client.address);
+  if (completePayerAddress(current) || onlyDigits(client.document).length !== 14) return current;
+
+  try {
+    const registration = await lookupCnpjRegistration(clean(client.document));
+    const resolved = payerAddress({ ...registration.address, ...Object.fromEntries(Object.entries(current).filter(([, value]) => value)) });
+    if (completePayerAddress(resolved)) {
+      const supabase = createServiceClient();
+      await supabase
+        .from("clients")
+        .update({ address: resolved, updated_at: new Date().toISOString() })
+        .eq("id", clean(client.id))
+        .eq("company_id", companyId);
+    }
+    return resolved;
+  } catch {
+    return current;
+  }
 }
 
 function firstValue(payload: Row, keys: string[]) {
@@ -254,7 +297,7 @@ async function chargeContext(companyId: string, chargeId: string) {
     .from("boleto_charges")
     .select(`
       id,company_id,financial_entry_id,external_id,status,idempotency_key,
-      financial_entries(id,client_id,description,due_date,net_amount,clients(legal_name,document,financial_email,fiscal_email))
+      financial_entries(id,client_id,description,due_date,net_amount,clients(id,legal_name,document,financial_email,fiscal_email,address))
     `)
     .eq("id", chargeId)
     .eq("company_id", companyId)
@@ -278,6 +321,7 @@ export async function processInterCharge(companyId: string, chargeId: string, ac
       return { ok: true, status: mapInterChargeStatus(firstValue(payload, ["situacao", "status"])) };
     }
 
+    const address = await resolvePayerAddress(companyId, client);
     const result = await createInterCharge({
       entryId: clean(entry.id),
       dueDate: clean(entry.due_date),
@@ -285,6 +329,7 @@ export async function processInterCharge(companyId: string, chargeId: string, ac
       payerDocument: clean(client.document),
       payerName: clean(client.legal_name),
       payerEmail: clean(client.financial_email || client.fiscal_email),
+      payerAddress: address,
       description: clean(entry.description),
       seuNumero: clean(entry.id).replace(/\D/g, "").slice(0, 15)
     }, credentials);
@@ -345,6 +390,59 @@ export async function cancelStoredInterCharge(companyId: string, chargeId: strin
   const credentials = await loadActiveInterCredentials(companyId);
   const payload = await cancelInterCharge(charge.external_id, reason, credentials);
   await applyInterChargePayload({ companyId, chargeId, payload, source: "cancelamento", actorId });
+}
+
+export async function cancelInterChargesForFinancialEntry(input: {
+  companyId: string;
+  entryId: string;
+  reason: string;
+  actorId?: string | null;
+}) {
+  const supabase = createServiceClient();
+  const { data: entry } = await supabase
+    .from("financial_entries")
+    .select("charge_id")
+    .eq("id", input.entryId)
+    .eq("company_id", input.companyId)
+    .maybeSingle();
+  const chargeFilter = [
+    `financial_entry_id.eq.${input.entryId}`,
+    entry?.charge_id ? `id.eq.${entry.charge_id}` : null
+  ].filter(Boolean).join(",");
+  const { data: charges, error } = await supabase
+    .from("boleto_charges")
+    .select("id,status,external_id")
+    .eq("company_id", input.companyId)
+    .or(chargeFilter);
+  if (error) throw new Error(error.message || "Nao foi possivel localizar a cobranca vinculada.");
+
+  const activeCharges = (charges || []).filter((charge) => charge.status !== "cancelada");
+  if (activeCharges.some((charge) => ["paga", "conciliada"].includes(String(charge.status)))) {
+    throw new Error("O boleto ja foi pago ou conciliado e nao pode ser cancelado automaticamente.");
+  }
+
+  let cancelled = 0;
+  for (const charge of activeCharges) {
+    if (charge.external_id) {
+      await cancelStoredInterCharge(input.companyId, charge.id, input.reason, input.actorId);
+    } else {
+      const payload = {
+        motivoCancelamento: input.reason,
+        canceladoLocalmente: true,
+        dataHoraSituacao: new Date().toISOString()
+      };
+      await applyInterChargePayload({
+        companyId: input.companyId,
+        chargeId: charge.id,
+        payload,
+        source: "cancelamento",
+        actorId: input.actorId
+      });
+    }
+    cancelled += 1;
+  }
+
+  return { cancelled };
 }
 
 export async function getStoredInterChargePdf(companyId: string, chargeId: string, actorId?: string | null) {

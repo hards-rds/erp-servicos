@@ -42,6 +42,82 @@ export async function POST(request: NextRequest) {
   }
   const { supabase, profile } = access;
 
+  if (action === "cancel") {
+    if (!entryId) return redirectWith(request, "cancel_invalid");
+    const { data: entry } = await supabase
+      .from("financial_entries")
+      .select("id,status,received_at,charge_id")
+      .eq("id", entryId)
+      .eq("company_id", profile.company_id)
+      .maybeSingle();
+    if (!entry) return redirectWith(request, "cancel_not_found");
+    if (entry.status === "cancelado") return redirectWith(request, "cancelled");
+    if (entry.received_at || ["recebido", "conciliado"].includes(entry.status)) {
+      return redirectWith(request, "cancel_settled");
+    }
+
+    const chargeFilter = [
+      `financial_entry_id.eq.${entry.id}`,
+      entry.charge_id ? `id.eq.${entry.charge_id}` : null
+    ].filter(Boolean).join(",");
+    const [nfseResult, chargeResult] = await Promise.all([
+      supabase
+        .from("nfse_documents")
+        .select("id,status")
+        .eq("company_id", profile.company_id)
+        .eq("financial_entry_id", entry.id),
+      supabase
+        .from("boleto_charges")
+        .select("id,status,external_id")
+        .eq("company_id", profile.company_id)
+        .or(chargeFilter)
+    ]);
+    if (nfseResult.error || chargeResult.error) return redirectWith(request, "cancel_check_error");
+    if ((nfseResult.data || []).some((document) => ["enviada", "autorizada"].includes(document.status))) {
+      return redirectWith(request, "cancel_nfse");
+    }
+    if ((chargeResult.data || []).some((charge) =>
+      ["paga", "conciliada"].includes(charge.status) || (charge.status !== "cancelada" && Boolean(charge.external_id))
+    )) {
+      return redirectWith(request, "cancel_charge");
+    }
+
+    const localChargeIds = (chargeResult.data || [])
+      .filter((charge) => charge.status !== "cancelada" && !charge.external_id)
+      .map((charge) => charge.id);
+    if (localChargeIds.length) {
+      const { error } = await supabase
+        .from("boleto_charges")
+        .update({
+          status: "cancelada",
+          rejection_message: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq("company_id", profile.company_id)
+        .in("id", localChargeIds);
+      if (error) return redirectWith(request, "cancel_error");
+    }
+
+    const { data: cancelledEntries, error } = await supabase
+      .from("financial_entries")
+      .update({ status: "cancelado", updated_by: profile.id, updated_at: new Date().toISOString() })
+      .eq("id", entry.id)
+      .eq("company_id", profile.company_id)
+      .not("status", "in", "(recebido,conciliado,cancelado)")
+      .is("received_at", null)
+      .select("id");
+    if (error || !cancelledEntries?.length) return redirectWith(request, "cancel_error");
+    await writeCompanyAudit({
+      companyId: profile.company_id,
+      actorId: profile.id,
+      entity: "financial_entry",
+      entityId: entry.id,
+      action: "cancel",
+      metadata: { localChargeIds }
+    });
+    return redirectWith(request, "cancelled");
+  }
+
   if (action === "receive_batch") {
     const entryIds = [...new Set(
       formData.getAll("entryIds").map((value) => String(value).trim()).filter(Boolean)

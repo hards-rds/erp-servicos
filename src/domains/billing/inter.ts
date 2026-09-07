@@ -7,6 +7,15 @@ export type ChargeDraft = {
   payerDocument: string;
   payerName?: string;
   payerEmail?: string;
+  payerAddress?: {
+    street?: string;
+    number?: string;
+    complement?: string;
+    district?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
+  };
   description?: string;
   seuNumero?: string;
 };
@@ -23,6 +32,14 @@ export function validateChargeDraft(draft: ChargeDraft, environment: "sandbox" |
   if (!draft.payerDocument) errors.push("Documento do pagador obrigatorio.");
   if (environment === "production" && !draft.payerName) {
     errors.push("Nome do pagador obrigatorio para cobranca real no Banco Inter.");
+  }
+  if (environment === "production") {
+    if (!draft.payerAddress?.street) errors.push("Endereco do pagador obrigatorio para cobranca real no Banco Inter.");
+    if (!draft.payerAddress?.city) errors.push("Cidade do pagador obrigatoria para cobranca real no Banco Inter.");
+    if (!/^[A-Za-z]{2}$/.test(draft.payerAddress?.state || "")) errors.push("UF do pagador obrigatoria para cobranca real no Banco Inter.");
+    if (!/^\d{8}$/.test(String(draft.payerAddress?.zipCode || "").replace(/\D/g, ""))) {
+      errors.push("CEP do pagador deve possuir 8 digitos para cobranca real no Banco Inter.");
+    }
   }
   return errors;
 }

@@ -170,6 +170,7 @@ async function authorizedRequest(credentials: InterRuntimeCredentials, options: 
 
 function buildInterChargePayload(draft: ChargeDraft) {
   const payerDocument = onlyDigits(draft.payerDocument);
+  const address = draft.payerAddress || {};
   return {
     seuNumero: (draft.seuNumero || draft.entryId.replace(/\D/g, "")).slice(0, 15) || Date.now().toString().slice(-15),
     valorNominal: money(draft.amountCents),
@@ -180,7 +181,14 @@ function buildInterChargePayload(draft: ChargeDraft) {
       cpfCnpj: payerDocument,
       tipoPessoa: payerDocument.length === 11 ? "FISICA" : "JURIDICA",
       nome: draft.payerName || "Pagador",
-      ...(draft.payerEmail ? { email: draft.payerEmail } : {})
+      ...(draft.payerEmail ? { email: draft.payerEmail } : {}),
+      endereco: clean(address.street),
+      ...(address.number ? { numero: clean(address.number) } : {}),
+      ...(address.complement ? { complemento: clean(address.complement) } : {}),
+      ...(address.district ? { bairro: clean(address.district) } : {}),
+      cidade: clean(address.city),
+      uf: clean(address.state).toUpperCase(),
+      cep: onlyDigits(address.zipCode)
     },
     mensagem: {
       linha1: (draft.description || "Prestacao de servicos").slice(0, 78)

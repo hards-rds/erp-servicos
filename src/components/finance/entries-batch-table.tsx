@@ -144,6 +144,7 @@ export function EntriesBatchTable({ entries, competence }: { entries: FinancialE
                       amount={entry.netAmount}
                       competence={competence}
                       canReceive={receivable}
+                      canCancel={!entry.receivedAt && !["recebido", "conciliado", "cancelado"].includes(entry.status)}
                       canDelete={!entry.receivedAt && !["recebido", "conciliado"].includes(entry.status)}
                     />
                   </td>

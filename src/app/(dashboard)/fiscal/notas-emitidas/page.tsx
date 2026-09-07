@@ -35,6 +35,7 @@ type NotasEmitidasPageProps = {
 
 const statusMessages: Record<string, { kind: "success" | "error"; text: string }> = {
   cancelled: { kind: "success", text: "NFS-e cancelada com sucesso." },
+  cancel_partial: { kind: "error", text: "A NFS-e foi cancelada, mas ainda existem pendencias no boleto ou no financeiro." },
   cancel_rejected: { kind: "error", text: "A SEFIN rejeitou o cancelamento da NFS-e." },
   cancel_error: { kind: "error", text: "Nao foi possivel cancelar a NFS-e agora." },
   pdf_generated: { kind: "success", text: "DANFSe gerado e anexado a nota." },
