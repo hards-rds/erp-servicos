@@ -241,6 +241,13 @@ export function AppShellClient({
     });
   };
 
+  const navigateFromSidebar = (event: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
+    event.preventDefault();
+    window.location.assign(href);
+  };
+
   return (
     <div className={`app-shell${collapsed ? " sidebar-collapsed" : ""}${mobileOpen ? " sidebar-open" : ""}`}>
       <GlobalTableScroll />
@@ -291,8 +298,10 @@ export function AppShellClient({
                     className={`nav-link${isActive ? " active" : ""}`}
                     href={item.href}
                     key={item.href}
+                    prefetch={false}
                     title={collapsed ? item.label : undefined}
                     aria-current={isActive ? "page" : undefined}
+                    onClick={(event) => navigateFromSidebar(event, item.href)}
                   >
                     <Icon aria-hidden="true" />
                     <span>{item.label}</span>
